@@ -15,38 +15,9 @@ import { Rng, hashSeed } from "./rng";
 import { makeRect } from "./grid";
 import { generateCornerField, ensureDistinct, smoothField, FieldTuneError } from "./field";
 import { PuzzleParams, zenParams, levelParams, todayParams, ZenOptions } from "./difficulty";
-import { Lab, labToHex, hexToLab, hexToRgb, rgbToLab } from "./color";
+import { Lab, hexToLab } from "./color";
 import { shuffledPlacement } from "./shuffle";
-
-/**
- * Final hex-level dedup: sub-perceptual Lab repairs can round back to the
- * same 8-bit color, so any remaining exact collision gets a 1/255 channel
- * bump — invisible, but guarantees every tile is literally unique.
- */
-function dedupeHex(colors: string[]): string[] {
-  const seen = new Set<string>();
-  return colors.map((hex) => {
-    if (!seen.has(hex)) {
-      seen.add(hex);
-      return hex;
-    }
-    let h = hex;
-    for (let guard = 1; seen.has(h) && guard <= 12; guard++) {
-      const rgb = hexToRgb(h);
-      const channel = guard % 3; // r, g, b round-robin
-      const vals = [rgb.r, rgb.g, rgb.b];
-      if (vals[channel] < 255) vals[channel] += 1;
-      else vals[channel] -= 1;
-      h = labToHex(rgbToLab({ r: vals[0], g: vals[1], b: vals[2] }));
-      if (seen.has(h)) {
-        // Re-derive the exact hex (bypass quantization wobble) if needed.
-        h = `#${vals.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
-      }
-    }
-    seen.add(h);
-    return h;
-  });
-}
+import { finalizeColors } from "./quantize";
 
 export interface Puzzle {
   cols: number;
@@ -123,7 +94,7 @@ export function generatePuzzle(params: PuzzleParams, seed: number): Puzzle {
     throw new Error(`field generation failed for seed ${seed}`);
   }
 
-  const colors = dedupeHex(labs.map(labToHex));
+  const colors = finalizeColors(labs, grid, { meanFloor: used.minAdjacentDelta });
   const placement = shuffledPlacement(rng, grid.cells.length, new Set());
 
   return { cols: params.cols, rows: params.rows, colors, placement, params: used, seed };
@@ -144,11 +115,11 @@ export function puzzleFromColors(
     throw new Error(`expected ${cols * rows} colors, got ${colors.length}`);
   }
   const grid = makeRect(cols, rows);
-  // A light smoothing before distinctness repairs so image sampling noise and
-  // JPEG artifacts never become visible steps.
+  // A light smoothing before finalization so image sampling noise and JPEG
+  // artifacts never become visible steps; artwork contrast is preserved.
   const smoothed = smoothField(colors.map(hexToLab), grid, 1, 0.2);
-  const labs = ensureDistinct(smoothed, grid);
-  const fixed = dedupeHex(labs.map(labToHex));
+  const distinct = ensureDistinct(smoothed, grid);
+  const fixed = finalizeColors(distinct, grid, { adjacentFloor: 0.0055 });
   const rng = new Rng(seed);
   const placement = shuffledPlacement(rng, fixed.length, new Set());
   const mode = colors.length > 60 ? "quad" : "diagonal";

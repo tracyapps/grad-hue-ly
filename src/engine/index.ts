@@ -23,6 +23,7 @@ export {
   type CornerMode,
 } from "./field";
 export { shuffledPlacement } from "./shuffle";
+export { finalizeColors } from "./quantize";
 export {
   levelParams,
   zenParams,
