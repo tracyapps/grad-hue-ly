@@ -12,7 +12,15 @@ export {
   type Rgb,
 } from "./color";
 export { makeRect, adjacentPairs, neighborIndices, type GridSpec, type Cell } from "./grid";
-export { generateField, FieldTuneError, type FieldParams, type GeneratedField } from "./field";
+export {
+  generateCornerField,
+  ensureDistinct,
+  bilinearSample,
+  FieldTuneError,
+  type FieldParams,
+  type GeneratedField,
+  type CornerMode,
+} from "./field";
 export { shuffledPlacement } from "./shuffle";
 export {
   levelParams,
@@ -31,8 +39,12 @@ export {
   generateLevel,
   generateToday,
   generateZen,
+  puzzleFromColors,
   isSolved,
   applySwap,
+  applyCornerLocks,
+  cornerCells,
+  resampleColors,
   levelSeed,
   todaySeed,
   zenSeed,

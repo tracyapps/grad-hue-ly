@@ -38,6 +38,7 @@ export default function RootLayout() {
           <Stack.Screen name="gallery" />
           <Stack.Screen name="stats" />
           <Stack.Screen name="settings" />
+          <Stack.Screen name="studio" />
         </Stack>
       </SafeAreaProvider>
     </GestureHandlerRootView>

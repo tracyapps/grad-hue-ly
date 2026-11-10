@@ -23,11 +23,14 @@ import {
 export interface GalleryItem {
   /** Stable id: `${kind}:${level or date or nonce}` */
   key: string;
-  kind: "level" | "today" | "zen";
+  kind: "level" | "today" | "zen" | "studio";
   level?: number;
   dateISO?: string;
   size?: ZenSize;
   subtlety?: ZenSubtlety;
+  /** For studio solves: the gradient id and played grid. */
+  studioId?: string;
+  grid?: string;
   solvedAt: number;
   moves: number;
 }
@@ -36,6 +39,10 @@ export interface Settings {
   sound: boolean;
   haptics: boolean;
   reduceMotion: boolean;
+  /** Pre-place the four corner tiles as reference anchors. */
+  cornerAssist: boolean;
+  /** Show the move counter during play (always recorded either way). */
+  showMoves: boolean;
 }
 
 export interface ProfileState {
@@ -57,11 +64,13 @@ export interface ProfileState {
   onboarded: boolean;
 
   recordSolve: (input: {
-    kind: "level" | "today" | "zen";
+    kind: "level" | "today" | "zen" | "studio";
     level?: number;
     dateISO?: string;
     size?: ZenSize;
     subtlety?: ZenSubtlety;
+    studioId?: string;
+    grid?: string;
     moves: number;
   }) => void;
   /** Zen has no "progress"; every solve just advances the seed stream. */
@@ -90,10 +99,16 @@ export const useProfile = create<ProfileState>()(
       zenNonce: 0,
       today: {},
       gallery: [],
-      settings: { sound: true, haptics: true, reduceMotion: false },
+      settings: {
+        sound: true,
+        haptics: true,
+        reduceMotion: false,
+        cornerAssist: true,
+        showMoves: false,
+      },
       onboarded: false,
 
-      recordSolve: ({ kind, level, size, subtlety, moves }) => {
+      recordSolve: ({ kind, level, size, subtlety, studioId, grid, moves }) => {
         const state = get();
         const dateISO = kind === "today" ? todayISO() : undefined;
         const key =
@@ -101,7 +116,9 @@ export const useProfile = create<ProfileState>()(
             ? `level:${level}`
             : kind === "today"
               ? `today:${dateISO}`
-              : `zen:${state.zenNonce}`;
+              : kind === "studio"
+                ? `studio:${studioId}:${grid}`
+                : `zen:${state.zenNonce}`;
 
         const patch: Partial<ProfileState> = {
           solvedCount: state.solvedCount + 1,
@@ -130,6 +147,8 @@ export const useProfile = create<ProfileState>()(
           dateISO,
           size,
           subtlety,
+          studioId,
+          grid,
           solvedAt: Date.now(),
           moves,
         };
@@ -153,7 +172,22 @@ export const useProfile = create<ProfileState>()(
     {
       name: "gradhuely-profile",
       storage: createJSONStorage(() => AsyncStorage),
-      version: 1,
+      version: 2,
+      migrate: (persisted, version) => {
+        const state = persisted as { state?: Partial<ProfileState> } | undefined;
+        // v1 → v2: settings gained cornerAssist + showMoves.
+        if (state?.state?.settings && version < 2) {
+          const defaults: Settings = {
+            sound: true,
+            haptics: true,
+            reduceMotion: false,
+            cornerAssist: true,
+            showMoves: false,
+          };
+          state.state.settings = { ...defaults, ...state.state.settings };
+        }
+        return state as unknown as ProfileState;
+      },
     },
   ),
 );

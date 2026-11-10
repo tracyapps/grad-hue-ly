@@ -4,17 +4,17 @@
  * Levels climb from 4×4 to 10×14 over roughly the first 300 levels — with
  * breathing oscillation so no jump ever feels like a wall — while adjacent-tile
  * contrast (the perceptual difficulty dial) tightens gradually from clear to
- * whisper-subtle. Locked corner tiles exist only while learning; after level
- * 24 it's just you and the gradient. Every 10th level is a deliberate breather.
+ * whisper-subtle. Early boards flow along one diagonal; later boards give all
+ * four corners their own voice. Corner locks are a player setting, applied at
+ * play time, not part of the puzzle itself.
  */
 
-import type { FieldParams } from "./field";
+import type { CornerMode, FieldParams } from "./field";
 
 export interface PuzzleParams extends FieldParams {
   cols: number;
   rows: number;
-  /** Corner tiles locked in place (reference anchors). */
-  locks: number;
+  cornerMode: CornerMode;
   /** How long the solved board is shown before the shuffle. */
   revealMs: number;
 }
@@ -92,7 +92,8 @@ export function levelParams(level: number): PuzzleParams {
   const aspect = 1.0 + 0.4 * prog * (0.5 + 0.5 * Math.sin(level * 0.13 + 1));
   const rows = clamp(Math.round(cols * aspect), cols, 14);
 
-  const anchors = 3 + (prog > 0.35 ? 1 : 0) + (prog > 0.75 ? 1 : 0);
+  // One clean flow while learning; four-way flows once the eye is trained.
+  const cornerMode: CornerMode = level <= 40 ? "diagonal" : "quad";
 
   // Hue span oscillates for variety — narrow whisper chapters, wide sweep
   // chapters — independent of raw difficulty.
@@ -110,22 +111,16 @@ export function levelParams(level: number): PuzzleParams {
   const lightRange: [number, number] = jewel ? [0.3, 0.66] : [0.46, 0.82];
   const chromaRange: [number, number] = jewel ? [0.075, 0.16] : [0.035, 0.115];
 
-  const locks = level <= 6 ? 4 : level <= 24 ? 2 : 0;
-  const revealMs = Math.round(lerp(4200, 2000, prog));
-  const drift = 0.009 + 0.006 * (0.5 + 0.5 * Math.sin(level * 1.7));
-
   return {
     cols,
     rows,
-    anchors,
+    cornerMode,
     hueSpan,
     lightRange,
     chromaRange,
     minAdjacentDelta,
     maxAdjacentDelta: minAdjacentDelta * 2.0 + 0.008,
-    locks,
-    revealMs,
-    drift,
+    revealMs: Math.round(lerp(4200, 2000, prog)),
   };
 }
 
@@ -156,15 +151,13 @@ export function zenParams(opts: ZenOptions = {}): PuzzleParams {
   return {
     cols,
     rows,
-    anchors: cols >= 9 ? 4 : 3,
+    cornerMode: opts.size === "small" ? "diagonal" : "quad",
     hueSpan: 0.28,
     lightRange: [0.46, 0.82],
     chromaRange: [0.035, 0.115],
     minAdjacentDelta,
-    maxAdjacentDelta: minAdjacentDelta * 2.2 + 0.012,
-    locks: 0,
+    maxAdjacentDelta: minAdjacentDelta * 2.0 + 0.008,
     revealMs: 3000,
-    drift: 0.012,
   };
 }
 

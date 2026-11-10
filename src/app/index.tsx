@@ -1,4 +1,4 @@
-import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { chapterName } from "@/engine";
@@ -92,6 +92,14 @@ export default function Home() {
           <Pressable onPress={() => router.push("/settings")}>
             <Text style={styles.link}>settings</Text>
           </Pressable>
+          {Platform.OS === "web" && (
+            <>
+              <Text style={styles.linkDot}>·</Text>
+              <Pressable onPress={() => router.push("/studio")}>
+                <Text style={styles.link}>studio</Text>
+              </Pressable>
+            </>
+          )}
         </View>
       </ScrollView>
       </SafeAreaView>

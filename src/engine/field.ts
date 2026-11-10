@@ -1,18 +1,20 @@
 /**
  * Gradient-field generation — the soul of the game.
  *
- * We scatter anchor colors across the board and interpolate them in OKLab
- * with softened inverse-distance weighting. Between competing anchors chroma
- * cancels naturally, which is what produces those gray-lavender centers the
- * original game was loved for. A gentle sinusoidal drift keeps fields organic
- * instead of mathematically banded, and guarantees the "flat" direction of a
- * gradient still carries perceptible signal.
+ * Boards are TRUE multidimensional gradients: color flows from source colors
+ * at the four corners, bilinearly interpolated in OKLab (where linear mixes
+ * match what the eye sees). Between opposing corners chroma cancels
+ * naturally, producing the gray-lavender middles the original was loved for.
+ *
+ * Two flows, straight out of I Love Hue 1:
+ *  - "diagonal": two opposing corners carry the color; the other two sit at
+ *    the midpoint — the classic easy sweep.
+ *  - "quad": all four corners are distinct but related (a hue arc along one
+ *    diagonal, a lightness ramp along the other) — coherent, yet 2D.
  *
  * After interpolation the field is tuned — scaled around its mean — until the
- * *mean* perceptual distance between 4-adjacent tiles lands inside the
- * difficulty band. Individual pairs may dip lower (iso-line neighbors on a
- * calm gradient genuinely look similar — that's part of the game), but never
- * below a hard floor that keeps every tile distinct and traceable.
+ * *mean* perceptual distance between adjacent tiles lands in the difficulty
+ * band, then repaired locally so every tile stays distinct and traceable.
  */
 
 import { Lab, lchToLab, fitToGamut, deltaEok } from "./color";
@@ -20,9 +22,7 @@ import { Rng } from "./rng";
 import { GridSpec, adjacentPairs } from "./grid";
 
 export interface FieldParams {
-  /** 3–6 color anchors blended across the board. */
-  anchors: number;
-  /** Hue arc covered by the anchors, in turns (0.08 = whisper-subtle). */
+  /** Hue arc between the two flow endpoints, in turns. */
   hueSpan: number;
   lightRange: [number, number];
   chromaRange: [number, number];
@@ -30,19 +30,14 @@ export interface FieldParams {
   minAdjacentDelta: number;
   /** Target cap for the mean adjacent ΔEok (keeps things from getting easy). */
   maxAdjacentDelta: number;
-  /** Amplitude of the organic wobble (a/b, and 0.6× in L). */
-  drift: number;
 }
 
-export interface Anchor {
-  u: number;
-  v: number;
-  lab: Lab;
-}
+export type CornerMode = "diagonal" | "quad";
 
 export interface GeneratedField {
   labs: Lab[];
-  anchors: Anchor[];
+  /** TL, TR, BL, BR */
+  corners: [Lab, Lab, Lab, Lab];
   minAdjacent: number;
   meanAdjacent: number;
   maxAdjacent: number;
@@ -58,34 +53,21 @@ export class FieldTuneError extends Error {
 
 const lerp = (a: number, b: number, t: number) => a + (b - a) * t;
 const clamp = (v: number, lo: number, hi: number) => Math.min(hi, Math.max(lo, v));
+const mixLab = (a: Lab, b: Lab, t: number): Lab => ({
+  l: lerp(a.l, b.l, t),
+  a: lerp(a.a, b.a, t),
+  b: lerp(a.b, b.b, t),
+});
 
-function anchorPositions(rng: Rng, k: number): Array<{ u: number; v: number }> {
-  const pos: Array<{ u: number; v: number }> = [];
-  const inset = () => rng.range(0.02, 0.18);
-
-  // First two anchors live in opposite corners — the classic diagonal pull.
-  const flip = rng.bool();
-  const c0 = flip ? { u: 0, v: 0 } : { u: 1, v: 0 };
-  const c1 = flip ? { u: 1, v: 1 } : { u: 0, v: 1 };
-  pos.push({ u: c0.u === 0 ? inset() : 1 - inset(), v: c0.v === 0 ? inset() : 1 - inset() });
-  pos.push({ u: c1.u === 0 ? inset() : 1 - inset(), v: c1.v === 0 ? inset() : 1 - inset() });
-
-  // Extras spread with a minimum-distance rejection loop.
-  for (let i = 2; i < k; i++) {
-    let sep = 0.38;
-    for (let attempt = 0; attempt < 40; attempt++) {
-      const u = rng.range(0.08, 0.92);
-      const v = rng.range(0.08, 0.92);
-      const ok = pos.every((p) => Math.hypot(p.u - u, p.v - v) >= sep);
-      if (ok) {
-        pos.push({ u, v });
-        break;
-      }
-      sep *= 0.92;
-      if (attempt === 39) pos.push({ u, v });
-    }
-  }
-  return pos;
+/** Bilinear sample of a corner field at normalized [0,1]² position. */
+export function bilinearSample(
+  corners: readonly [Lab, Lab, Lab, Lab],
+  u: number,
+  v: number,
+): Lab {
+  const top = mixLab(corners[0], corners[1], u);
+  const bottom = mixLab(corners[2], corners[3], u);
+  return mixLab(top, bottom, v);
 }
 
 function adjacentStats(
@@ -163,12 +145,13 @@ function pushApart(x: Lab, y: Lab, need: number): void {
  * where the gradient crosses zero, leaving adjacent pairs nearly identical —
  * global scaling can't fix a local property, so we repair locally with
  * sub-perceptual nudges (≤0.004 ΔE per pass, chroma plane only).
+ * Exported because the Studio's image-sampled boards need the same promise.
  */
-function resolveCoincidences(
+export function ensureDistinct(
   labs: Lab[],
   grid: GridSpec,
-  adjacentGap: number,
-  uniqueGap: number,
+  adjacentGap = 0.0042,
+  uniqueGap = 0.003,
 ): Lab[] {
   const out = labs.map((c) => ({ ...c }));
 
@@ -201,60 +184,79 @@ function resolveCoincidences(
   return out.map(fitToGamut);
 }
 
-export function generateField(rng: Rng, grid: GridSpec, p: FieldParams): GeneratedField {
-  const k = Math.max(3, Math.min(6, Math.round(p.anchors)));
-  const baseHue = rng.next();
-  let positions = anchorPositions(rng, k);
-  const veilAnchor = rng.next() < 0.25 ? rng.int(k) : -1;
+function sampleCornerColors(rng: Rng, p: FieldParams, mode: CornerMode): [Lab, Lab, Lab, Lab] {
+  const h0 = rng.next();
+  const span = p.hueSpan * rng.range(0.75, 1.25);
 
-  // Shuffle the anchor→position assignment so the lightness ramp is not
-  // spatially aligned with the hue arc — that alignment would collapse the
-  // field onto a single gradient axis.
-  positions = rng.shuffle(positions);
+  // A lightness difference between the two "sides" of the board guarantees
+  // the field is genuinely 2D — never a pure 1D sweep with identical
+  // anti-diagonal neighbors.
+  let l0 = rng.range(p.lightRange[0], p.lightRange[1]);
+  let l1 = rng.range(p.lightRange[0], p.lightRange[1]);
+  let guard = 12;
+  while (Math.abs(l1 - l0) < 0.14 && guard-- > 0) {
+    l1 = rng.range(p.lightRange[0], p.lightRange[1]);
+  }
+  const veil = rng.next() < 0.2; // one low-chroma endpoint for misty middles
 
-  const anchors: Anchor[] = positions.map((pos, i) => {
-    const hue =
-      (baseHue + p.hueSpan * (i / (k - 1) - 0.5) + rng.range(-0.02, 0.02) + 1) % 1;
-    const l = lerp(p.lightRange[0], p.lightRange[1], i / (k - 1)) + rng.range(-0.05, 0.05);
-    const c =
-      i === veilAnchor
-        ? rng.range(0.012, 0.035)
-        : rng.range(p.chromaRange[0], p.chromaRange[1]);
-    return {
-      u: pos.u,
-      v: pos.v,
-      lab: fitToGamut(lchToLab({ l: clamp(l, 0.12, 0.95), c: Math.max(0.008, c), h: hue })),
-    };
-  });
+  if (mode === "diagonal") {
+    // Hue + chroma flow TL → BR; lightness flows across the perpendicular
+    // diagonal (both off-corners shifted the same way), like game 1's early
+    // boards — brighter at the top, deeper at the bottom.
+    const A = fitToGamut(
+      lchToLab({
+        l: l0,
+        c: veil ? rng.range(0.02, 0.045) : rng.range(p.chromaRange[0], p.chromaRange[1]),
+        h: h0,
+      }),
+    );
+    const B = fitToGamut(
+      lchToLab({
+        l: l0,
+        c: rng.range(p.chromaRange[0], p.chromaRange[1]),
+        h: h0 + span,
+      }),
+    );
+    const mid = mixLab(A, B, 0.5);
+    const dl = (l1 - l0) * 0.7;
+    const lift = (lab: Lab): Lab =>
+      fitToGamut({ l: clamp(lab.l + dl, 0.14, 0.94), a: lab.a, b: lab.b });
+    return [A, lift(mid), lift(mid), B];
+  }
 
-  // Softened IDW (distance floor ≈ 0.1 keeps anchor neighborhoods gradual).
-  const f1 = rng.range(0.6, 1.6);
-  const f2 = rng.range(0.6, 1.6);
-  const f3 = rng.range(0.6, 1.6);
-  const ph1 = rng.range(0, Math.PI * 2);
-  const ph2 = rng.range(0, Math.PI * 2);
+  // quad: hue arc runs along one diagonal, lightness along the other.
+  const A = fitToGamut(
+    lchToLab({
+      l: l0,
+      c: veil ? rng.range(0.02, 0.045) : rng.range(p.chromaRange[0], p.chromaRange[1]),
+      h: h0,
+    }),
+  );
+  const B = fitToGamut(
+    lchToLab({ l: l0, c: rng.range(p.chromaRange[0], p.chromaRange[1]), h: h0 + span }),
+  );
+  const dH = span * 0.35 * (rng.bool() ? 1 : -1);
+  const A2 = fitToGamut(
+    lchToLab({ l: l1, c: rng.range(p.chromaRange[0], p.chromaRange[1]), h: h0 + dH }),
+  );
+  const B2 = fitToGamut(
+    lchToLab({ l: l1, c: rng.range(p.chromaRange[0], p.chromaRange[1]), h: h0 + span - dH }),
+  );
+  return [A, A2, B2, B];
+}
+
+export function generateCornerField(
+  rng: Rng,
+  grid: GridSpec,
+  p: FieldParams,
+  mode: CornerMode,
+): GeneratedField {
+  const corners = sampleCornerColors(rng, p, mode);
 
   const labs: Lab[] = grid.cells.map(({ x, y }) => {
     const u = grid.cols === 1 ? 0.5 : x / (grid.cols - 1);
     const v = grid.rows === 1 ? 0.5 : y / (grid.rows - 1);
-    let ws = 0;
-    let sl = 0;
-    let sa = 0;
-    let sb = 0;
-    for (const an of anchors) {
-      const dx = u - an.u;
-      const dy = v - an.v;
-      const w = 1 / Math.pow(Math.max(dx * dx + dy * dy, 0.01), 1.25);
-      ws += w;
-      sl += w * an.lab.l;
-      sa += w * an.lab.a;
-      sb += w * an.lab.b;
-    }
-    return {
-      l: sl / ws + p.drift * 0.6 * Math.sin(2 * Math.PI * (u * f1 + v * f2) + ph1),
-      a: sa / ws + p.drift * Math.sin(2 * Math.PI * (u * f3 + v * f2) + ph2),
-      b: sb / ws + p.drift * Math.cos(2 * Math.PI * (u * f1 + v * f3) + ph2),
-    };
+    return bilinearSample(corners, u, v);
   });
 
   // Tune the MEAN adjacent delta into [floor, cap] by scaling around the mean.
@@ -285,8 +287,7 @@ export function generateField(rng: Rng, grid: GridSpec, p: FieldParams): Generat
   }
 
   // Local repair: every adjacent pair clearly distinct, every tile unique.
-  // Calm iso-line neighbors are the game; interchangeable tiles are a bug.
-  const resolved = resolveCoincidences(
+  const resolved = ensureDistinct(
     best,
     grid,
     Math.max(0.0042, floor * 0.1),
@@ -299,9 +300,18 @@ export function generateField(rng: Rng, grid: GridSpec, p: FieldParams): Generat
     throw new FieldTuneError("distinctness repair failed");
   }
 
+  // Report corners from the FINAL field so callers (lock dots, previews)
+  // always see the colors that actually rendered.
+  const finalCorners: [Lab, Lab, Lab, Lab] = [
+    resolved[0],
+    resolved[grid.cols - 1],
+    resolved[(grid.rows - 1) * grid.cols],
+    resolved[grid.cells.length - 1],
+  ];
+
   return {
     labs: resolved,
-    anchors,
+    corners: finalCorners,
     minAdjacent: stats.min,
     meanAdjacent: stats.mean,
     maxAdjacent: stats.max,

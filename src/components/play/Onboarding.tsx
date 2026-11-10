@@ -8,9 +8,10 @@ import { useCallback, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Board, { BoardPhase } from "./Board";
-import { applySwap, generatePuzzle, isSolved } from "@/engine";
+import { applySwap, cornerCells, generatePuzzle, isSolved } from "@/engine";
 import { playSound } from "@/lib/sound";
 import { hapticSolve } from "@/lib/haptics";
+import { useProfile } from "@/state/profile";
 import { palette, radius, spacing, type as typeScale, trackedUpper } from "@/theme";
 
 const TEACH_SEED = 1337;
@@ -18,6 +19,7 @@ const TEACH_SEED = 1337;
 export default function Onboarding({ onDone }: { onDone: () => void }) {
   const { width } = useWindowDimensions();
   const side = Math.min(340, width - 64);
+  const cornerAssist = useProfile((s) => s.settings.cornerAssist);
 
   const puzzle = useMemo(
     () =>
@@ -25,20 +27,20 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         {
           cols: 3,
           rows: 3,
-          anchors: 3,
+          cornerMode: "diagonal",
           hueSpan: 0.85,
           lightRange: [0.55, 0.9],
           chromaRange: [0.09, 0.16],
           minAdjacentDelta: 0.07,
           maxAdjacentDelta: 0.18,
-          locks: 0,
           revealMs: 2600,
-          drift: 0.004,
         },
         TEACH_SEED,
       ),
     [],
   );
+
+  const locked = cornerAssist ? cornerCells(3, 3) : [];
 
   const [placement, setPlacement] = useState<number[]>(() =>
     puzzle.placement.map((_, i) => i),
@@ -87,7 +89,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
           rows={3}
           placement={placement}
           colors={puzzle.colors}
-          locked={[]}
+          locked={locked}
           phase={phase}
           reduceMotion={false}
           celebrateOrigin={solved ? 4 : null}

@@ -1,4 +1,4 @@
-import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import { Platform, Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import GradientBackdrop from "@/components/GradientBackdrop";
@@ -68,6 +68,18 @@ export default function Settings() {
             value={settings.reduceMotion}
             onChange={(v) => updateSettings({ reduceMotion: v })}
           />
+          <Toggle
+            label="corner anchors"
+            hint="the four corners start placed for you"
+            value={settings.cornerAssist}
+            onChange={(v) => updateSettings({ cornerAssist: v })}
+          />
+          <Toggle
+            label="show move count"
+            hint="always recorded, only shown if you want it"
+            value={settings.showMoves}
+            onChange={(v) => updateSettings({ showMoves: v })}
+          />
         </View>
 
         <Text style={styles.sectionLabel}>account</Text>
@@ -80,6 +92,27 @@ export default function Settings() {
             <Text style={styles.soon}>soon</Text>
           </View>
         </View>
+
+        {Platform.OS === "web" && (
+          <>
+            <Text style={styles.sectionLabel}>studio</Text>
+            <View style={styles.group}>
+              <Pressable
+                style={styles.studioRow}
+                onPress={() => router.push("/studio")}
+                accessibilityLabel="Open the gradient studio"
+              >
+                <View style={styles.toggleText}>
+                  <Text style={styles.toggleLabel}>gradient studio</Text>
+                  <Text style={styles.toggleHint}>
+                    craft boards from images or corner colors
+                  </Text>
+                </View>
+                <Text style={styles.chevron}>›</Text>
+              </Pressable>
+            </View>
+          </>
+        )}
 
         <Text style={styles.footer}>grad[hue]ly · v0.1</Text>
       </View>
@@ -112,6 +145,8 @@ const styles = StyleSheet.create({
   toggleLabel: { ...typeScale.body, color: palette.text, fontFamily: font.semiBold },
   toggleHint: { ...typeScale.small, color: palette.textFaint },
   soon: { ...typeScale.small, ...trackedUpper, color: palette.textFaint },
+  studioRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  chevron: { color: palette.textDim, fontSize: 22 },
   sectionLabel: { ...typeScale.small, ...trackedUpper, color: palette.accent, marginTop: spacing.lg },
   footer: {
     ...typeScale.small,

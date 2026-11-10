@@ -14,6 +14,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import Board, { BoardPhase } from "./Board";
 import {
   applySwap,
+  applyCornerLocks,
+  cornerCells,
   isSolved,
   type Puzzle,
   type ZenSize,
@@ -22,9 +24,9 @@ import {
 import { useProfile } from "@/state/profile";
 import { hapticDrop, hapticSolve } from "@/lib/haptics";
 import { playSound } from "@/lib/sound";
-import { palette, spacing, type as typeScale, trackedUpper } from "@/theme";
+import { palette, radius, spacing, type as typeScale, trackedUpper } from "@/theme";
 
-export type PlayKind = "level" | "today" | "zen";
+export type PlayKind = "level" | "today" | "zen" | "studio";
 
 interface PlayScreenProps {
   puzzle: Puzzle;
@@ -32,6 +34,8 @@ interface PlayScreenProps {
   level?: number;
   size?: ZenSize;
   subtlety?: ZenSubtlety;
+  studioId?: string;
+  grid?: string;
   title: string;
   subtitle: string;
   onNext: () => void;
@@ -44,13 +48,22 @@ export default function PlayScreen({
   level,
   size,
   subtlety,
+  studioId,
+  grid,
   title,
   subtitle,
   onNext,
   onExit,
 }: PlayScreenProps) {
   const reduceMotion = useProfile((s) => s.settings.reduceMotion);
+  const cornerAssist = useProfile((s) => s.settings.cornerAssist);
+  const showMoves = useProfile((s) => s.settings.showMoves);
   const recordSolve = useProfile((s) => s.recordSolve);
+
+  const locked = useMemo(
+    () => (cornerAssist ? cornerCells(puzzle.cols, puzzle.rows) : []),
+    [cornerAssist, puzzle.cols, puzzle.rows],
+  );
 
   const [phase, setPhase] = useState<BoardPhase>("revealing");
   const [placement, setPlacement] = useState<number[]>(() =>
@@ -63,14 +76,22 @@ export default function PlayScreen({
   const recorded = useRef(false);
   const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  const shuffledStart = useMemo(
+    () =>
+      cornerAssist
+        ? applyCornerLocks(puzzle.placement, puzzle.cols, puzzle.rows)
+        : puzzle.placement,
+    [puzzle.placement, puzzle.cols, puzzle.rows, cornerAssist],
+  );
+
   const startShuffle = useCallback(() => {
     if (revealTimer.current) {
       clearTimeout(revealTimer.current);
       revealTimer.current = null;
     }
     setPhase((p) => (p === "revealing" ? "playing" : p));
-    setPlacement(puzzle.placement);
-  }, [puzzle.placement]);
+    setPlacement(shuffledStart);
+  }, [shuffledStart]);
 
   useEffect(() => {
     revealTimer.current = setTimeout(startShuffle, puzzle.params.revealMs);
@@ -78,6 +99,29 @@ export default function PlayScreen({
       if (revealTimer.current) clearTimeout(revealTimer.current);
     };
   }, [startShuffle, puzzle.params.revealMs]);
+
+  const handleSolved = useCallback(
+    (originCell: number, moveCount: number) => {
+      setCelebrateOrigin(originCell);
+      setPhase("solved");
+      hapticSolve();
+      playSound("solve");
+      if (!recorded.current) {
+        recorded.current = true;
+        recordSolve({
+          kind,
+          level,
+          size,
+          subtlety,
+          studioId,
+          grid,
+          moves: moveCount,
+        });
+      }
+      setTimeout(() => setSheetVisible(true), reduceMotion ? 250 : 1050);
+    },
+    [kind, level, size, subtlety, studioId, grid, recordSolve, reduceMotion],
+  );
 
   const onSwap = useCallback(
     (from: number, to: number) => {
@@ -88,26 +132,22 @@ export default function PlayScreen({
       setHintVisible(false);
       hapticDrop();
       playSound("drop");
-      if (isSolved(next)) {
-        setCelebrateOrigin(to);
-        setPhase("solved");
-        hapticSolve();
-        playSound("solve");
-        if (!recorded.current) {
-          recorded.current = true;
-          recordSolve({
-            kind,
-            level,
-            size,
-            subtlety,
-            moves: moves + 1,
-          });
-        }
-        setTimeout(() => setSheetVisible(true), reduceMotion ? 250 : 1050);
-      }
+      if (isSolved(next)) handleSolved(to, moves + 1);
     },
-    [phase, placement, moves, kind, level, size, subtlety, recordSolve, reduceMotion],
+    [phase, placement, moves, handleSolved],
   );
+
+  /** Rescue action: place the four corners, free of charge. */
+  const setCorners = useCallback(() => {
+    if (phase !== "playing") return;
+    const next = applyCornerLocks(placement, puzzle.cols, puzzle.rows);
+    if (next.every((t, i) => t === placement[i])) return;
+    setPlacement(next);
+    setHintVisible(false);
+    hapticDrop();
+    playSound("drop");
+    if (isSolved(next)) handleSolved(cornerCells(puzzle.cols, puzzle.rows)[0], moves);
+  }, [phase, placement, puzzle.cols, puzzle.rows, handleSolved, moves]);
 
   const restart = useCallback(() => {
     recorded.current = false;
@@ -144,7 +184,17 @@ export default function PlayScreen({
           <Text style={styles.hudSubtitle}>{subtitle}</Text>
         </View>
         <View style={styles.hudMovesWrap}>
-          {moves > 0 && (
+          {!cornerAssist && phase === "playing" && (
+            <Pressable
+              onPress={setCorners}
+              style={styles.cornerButton}
+              hitSlop={8}
+              accessibilityLabel="Place the four corner tiles"
+            >
+              <Text style={styles.cornerButtonText}>set corners</Text>
+            </Pressable>
+          )}
+          {showMoves && moves > 0 && (
             <Text style={styles.hudMoves}>
               {moves}
               {moves === 1 ? " move" : " moves"}
@@ -161,7 +211,7 @@ export default function PlayScreen({
             rows={puzzle.rows}
             placement={placement}
             colors={puzzle.colors}
-            locked={puzzle.locked}
+            locked={locked}
             phase={phase}
             reduceMotion={reduceMotion}
             celebrateOrigin={celebrateOrigin}
@@ -233,8 +283,21 @@ const styles = StyleSheet.create({
   hudTitle: { flex: 1, alignItems: "center" },
   hudTitleText: { ...typeScale.label, ...trackedUpper, color: palette.text },
   hudSubtitle: { ...typeScale.small, color: palette.textFaint, marginTop: 1 },
-  hudMovesWrap: { width: 80, alignItems: "flex-end", paddingRight: spacing.md },
+  hudMovesWrap: {
+    width: 120,
+    alignItems: "flex-end",
+    paddingRight: spacing.md,
+    gap: 4,
+  },
   hudMoves: { ...typeScale.small, color: palette.textFaint, fontVariant: ["tabular-nums"] },
+  cornerButton: {
+    borderWidth: 1,
+    borderColor: palette.line,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: 5,
+  },
+  cornerButtonText: { ...typeScale.small, ...trackedUpper, color: palette.textDim },
   boardArea: { flex: 1 },
   boardWrap: { flex: 1 },
   hintBar: { height: 34, alignItems: "center", justifyContent: "center" },

@@ -1,16 +1,21 @@
 /**
- * Puzzle assembly: field → colors, locks → anchors, shuffle → starting board.
+ * Puzzle assembly: corner field → colors, full shuffle → starting board.
  *
  * Everything is a pure function of (params, seed). Two devices given the same
  * seed produce byte-identical puzzles, which is what lets sync carry nothing
  * but seeds and counters.
+ *
+ * Corner locks are a player setting, not baked into the puzzle: the engine
+ * always shuffles every tile, and callers apply `applyCornerLocks` at play
+ * time when the assist is on. That keeps a board identical whether the
+ * helper is enabled or not.
  */
 
 import { Rng, hashSeed } from "./rng";
 import { makeRect } from "./grid";
-import { generateField, FieldTuneError } from "./field";
+import { generateCornerField, ensureDistinct, FieldTuneError } from "./field";
 import { PuzzleParams, zenParams, levelParams, todayParams, ZenOptions } from "./difficulty";
-import { Lab, labToHex } from "./color";
+import { Lab, labToHex, hexToLab } from "./color";
 import { shuffledPlacement } from "./shuffle";
 
 export interface Puzzle {
@@ -18,10 +23,8 @@ export interface Puzzle {
   rows: number;
   /** Hex color of tile i (tile i belongs at cell i when solved). */
   colors: string[];
-  /** cell → tile currently sitting there. */
+  /** cell → tile currently sitting there (fully shuffled, no locks). */
   placement: number[];
-  /** Locked cell indices — tiles that never move. */
-  locked: number[];
   params: PuzzleParams;
   seed: number;
 }
@@ -41,22 +44,30 @@ export function zenSeed(nonce: number, worldSeed: number = DEFAULT_WORLD_SEED): 
   return hashSeed("zen", nonce, worldSeed);
 }
 
-/** Corner cells in lock priority order. */
-function cornerLocks(cols: number, rows: number, count: number): number[] {
-  if (count <= 0) return [];
-  const corners = [
-    0,
-    cols * rows - 1,
-    cols - 1,
-    (rows - 1) * cols,
-  ];
-  return [...new Set(corners)].slice(0, Math.min(4, count));
+/** The four corner cell indices. */
+export function cornerCells(cols: number, rows: number): [number, number, number, number] {
+  return [0, cols - 1, (rows - 1) * cols, cols * rows - 1];
+}
+
+/**
+ * Place the four corner tiles into their solved cells (assists that trade
+ * away no difficulty of the interior). Pure: returns a new placement.
+ */
+export function applyCornerLocks(placement: number[], cols: number, rows: number): number[] {
+  const next = placement.slice();
+  for (const corner of cornerCells(cols, rows)) {
+    const at = next.indexOf(corner);
+    if (at !== corner) {
+      next[at] = next[corner];
+      next[corner] = corner;
+    }
+  }
+  return next;
 }
 
 export function generatePuzzle(params: PuzzleParams, seed: number): Puzzle {
   const grid = makeRect(params.cols, params.rows);
   const rng = new Rng(seed);
-  const locked = cornerLocks(params.cols, params.rows, params.locks);
 
   // Field generation retries with a slightly relaxed contrast floor; retries
   // consume the same rng stream, so the whole search stays deterministic.
@@ -71,7 +82,7 @@ export function generatePuzzle(params: PuzzleParams, seed: number): Puzzle {
             minAdjacentDelta: params.minAdjacentDelta * Math.pow(0.93, attempt),
           };
     try {
-      labs = generateField(rng, grid, p).labs;
+      labs = generateCornerField(rng, grid, p, p.cornerMode).labs;
       used = p;
       break;
     } catch (e) {
@@ -83,15 +94,43 @@ export function generatePuzzle(params: PuzzleParams, seed: number): Puzzle {
   }
 
   const colors = labs.map(labToHex);
-  const placement = shuffledPlacement(rng, grid.cells.length, new Set(locked));
+  const placement = shuffledPlacement(rng, grid.cells.length, new Set());
 
+  return { cols: params.cols, rows: params.rows, colors, placement, params: used, seed };
+}
+
+/**
+ * Build a puzzle from an explicit solved color set (the Studio's image- and
+ * corner-crafted boards). Colors are repaired for distinctness so the board
+ * is always unambiguously solvable.
+ */
+export function puzzleFromColors(
+  colors: string[],
+  cols: number,
+  rows: number,
+  seed: number,
+): Puzzle {
+  if (colors.length !== cols * rows) {
+    throw new Error(`expected ${cols * rows} colors, got ${colors.length}`);
+  }
+  const grid = makeRect(cols, rows);
+  const labs = ensureDistinct(colors.map(hexToLab), grid);
+  const fixed = labs.map(labToHex);
+  const rng = new Rng(seed);
+  const placement = shuffledPlacement(rng, fixed.length, new Set());
+  const mode = colors.length > 60 ? "quad" : "diagonal";
   return {
-    cols: params.cols,
-    rows: params.rows,
-    colors,
+    cols,
+    rows,
+    colors: fixed,
     placement,
-    locked,
-    params: used,
+    params: {
+      ...zenParams({ size: "medium" }),
+      cols,
+      rows,
+      cornerMode: mode,
+      revealMs: 3200,
+    },
     seed,
   };
 }
@@ -115,6 +154,37 @@ export function generateZen(
 export function isSolved(placement: number[]): boolean {
   for (let i = 0; i < placement.length; i++) if (placement[i] !== i) return false;
   return true;
+}
+
+/**
+ * Nearest-neighbor resample of a solved color grid at a new size — how the
+ * Studio serves one canonical gradient at every difficulty.
+ */
+export function resampleColors(
+  colors: string[],
+  fromCols: number,
+  fromRows: number,
+  toCols: number,
+  toRows: number,
+): string[] {
+  if (colors.length !== fromCols * fromRows) {
+    throw new Error(`expected ${fromCols * fromRows} colors, got ${colors.length}`);
+  }
+  const out: string[] = [];
+  for (let y = 0; y < toRows; y++) {
+    const sy = Math.min(
+      fromRows - 1,
+      Math.round((y / Math.max(1, toRows - 1)) * (fromRows - 1)),
+    );
+    for (let x = 0; x < toCols; x++) {
+      const sx = Math.min(
+        fromCols - 1,
+        Math.round((x / Math.max(1, toCols - 1)) * (fromCols - 1)),
+      );
+      out.push(colors[sy * fromCols + sx]);
+    }
+  }
+  return out;
 }
 
 /** Pure swap of the tiles at two cells. */
