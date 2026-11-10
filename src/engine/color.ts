@@ -68,7 +68,7 @@ export function rgbToLab({ r, g, b }: Rgb): Lab {
 }
 
 /** Unclamped linear-sRGB channels — the truth about gamut membership. */
-function labToLinear({ l, a, b }: Lab): { r: number; g: number; b: number } {
+export function labToLinear({ l, a, b }: Lab): { r: number; g: number; b: number } {
   const l_ = l + 0.3963377774 * a + 0.2158037573 * b;
   const m_ = l - 0.1055613458 * a - 0.0638541728 * b;
   const s_ = l - 0.0894841775 * a - 1.291485548 * b;
@@ -93,10 +93,14 @@ export function labToRgb(lab: Lab): Rgb {
   };
 }
 
-/** True when the color sits inside sRGB without clamping (small tolerance). */
-export function inGamut(lab: Lab): boolean {
+/**
+ * True when the color sits inside sRGB without clamping. A positive `margin`
+ * demands the color sit that far INSIDE the cube (in linear-light units), so
+ * 8-bit rounding can never push it out.
+ */
+export function inGamut(lab: Lab, margin = -0.0005): boolean {
   const lin = labToLinear(lab);
-  const eps = 0.0005;
+  const eps = -margin;
   return (
     lin.r >= -eps && lin.r <= 1 + eps &&
     lin.g >= -eps && lin.g <= 1 + eps &&
@@ -150,4 +154,28 @@ export function deltaEok(x: Lab, y: Lab): number {
   const da = x.a - y.a;
   const db = x.b - y.b;
   return Math.sqrt(dl * dl + da * da + db * db);
+}
+
+/**
+ * ΔE_OK2 — OKLab distance with a/b weighted ×2 (the variant Color.js ships as
+ * `deltaEOK2`). Plain ΔE_OK undercounts hue/chroma change relative to
+ * lightness change; doubling a/b tracks CIEDE2000 — i.e. what eyes report —
+ * far more closely. Every difficulty number in the engine is in these units,
+ * so a "step" means the same visible amount whether a board flows through
+ * hue or through lightness.
+ */
+export function deltaP(x: Lab, y: Lab): number {
+  const dl = x.l - y.l;
+  const da = 2 * (x.a - y.a);
+  const db = 2 * (x.b - y.b);
+  return Math.sqrt(dl * dl + da * da + db * db);
+}
+
+/** sRGB 0–255 floats (unclamped beyond the transfer function's own clamp). */
+export function rgbToHex({ r, g, b }: Rgb): string {
+  const to2 = (v: number) =>
+    Math.round(Math.min(255, Math.max(0, v)))
+      .toString(16)
+      .padStart(2, "0");
+  return `#${to2(r)}${to2(g)}${to2(b)}`;
 }

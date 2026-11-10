@@ -7,11 +7,11 @@
  */
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { Pressable, StyleSheet, Text, View } from "react-native";
-import { LinearGradient } from "expo-linear-gradient";
+import { Platform, Pressable, StyleSheet, Text, View } from "react-native";
 import Animated, { FadeInUp } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Board, { BoardPhase } from "./Board";
+import MiniBoard from "@/components/MiniBoard";
 import {
   applySwap,
   applyCornerLocks,
@@ -36,6 +36,7 @@ interface PlayScreenProps {
   subtlety?: ZenSubtlety;
   studioId?: string;
   grid?: string;
+  zenNonce?: number;
   title: string;
   subtitle: string;
   onNext: () => void;
@@ -50,6 +51,7 @@ export default function PlayScreen({
   subtlety,
   studioId,
   grid,
+  zenNonce,
   title,
   subtitle,
   onNext,
@@ -115,12 +117,14 @@ export default function PlayScreen({
           subtlety,
           studioId,
           grid,
+          zenNonce,
           moves: moveCount,
         });
       }
-      setTimeout(() => setSheetVisible(true), reduceMotion ? 250 : 1050);
+      // Let the seams close and the finished gradient breathe before the sheet.
+      setTimeout(() => setSheetVisible(true), reduceMotion ? 700 : 2100);
     },
-    [kind, level, size, subtlety, studioId, grid, recordSolve, reduceMotion],
+    [kind, level, size, subtlety, studioId, grid, zenNonce, recordSolve, reduceMotion],
   );
 
   const onSwap = useCallback(
@@ -159,19 +163,11 @@ export default function PlayScreen({
     revealTimer.current = setTimeout(startShuffle, puzzle.params.revealMs);
   }, [puzzle, startShuffle]);
 
-  const solvedColors = useMemo(
-    () =>
-      Array.from({ length: Math.min(puzzle.colors.length, 24) }, (_, i) =>
-        puzzle.colors[Math.round((i * (puzzle.colors.length - 1)) / 23)],
-      ) as [string, string, ...string[]],
-    [puzzle.colors],
-  );
-
   return (
     <SafeAreaView style={styles.safe}>
       {/* HUD */}
       <View style={styles.hud}>
-        <Pressable
+        <Pressable accessibilityRole="button"
           hitSlop={12}
           onPress={onExit}
           style={styles.hudButton}
@@ -185,7 +181,7 @@ export default function PlayScreen({
         </View>
         <View style={styles.hudMovesWrap}>
           {!cornerAssist && phase === "playing" && (
-            <Pressable
+            <Pressable accessibilityRole="button"
               onPress={setCorners}
               style={styles.cornerButton}
               hitSlop={8}
@@ -223,7 +219,11 @@ export default function PlayScreen({
           {phase === "revealing" ? (
             <Text style={styles.hint}>memorize the gradient — tap to shuffle</Text>
           ) : phase === "playing" && hintVisible && moves === 0 ? (
-            <Text style={styles.hint}>drag tiles to trade places</Text>
+            <Text style={styles.hint}>
+              {Platform.OS === "web"
+                ? "drag, or tap two tiles to trade places · arrows + space work too"
+                : "drag, or tap two tiles to trade places"}
+            </Text>
           ) : null}
         </View>
       </View>
@@ -237,23 +237,24 @@ export default function PlayScreen({
               {moves}
               <Text style={styles.sheetMovesUnit}> {moves === 1 ? "move" : "moves"}</Text>
             </Text>
-            <LinearGradient
-              colors={solvedColors}
-              start={{ x: 0, y: 0.5 }}
-              end={{ x: 1, y: 0.5 }}
-              style={styles.sheetStrip}
+            <MiniBoard
+              colors={puzzle.colors}
+              cols={puzzle.cols}
+              rows={puzzle.rows}
+              height={Math.min(150, 26 * puzzle.rows)}
+              radius={8}
             />
-            <Pressable style={styles.primaryButton} onPress={onNext}>
+            <Pressable accessibilityRole="button" style={styles.primaryButton} onPress={onNext}>
               <Text style={styles.primaryButtonText}>
                 {kind === "level" ? "next level" : kind === "today" ? "lovely" : "another"}
               </Text>
             </Pressable>
             <View style={styles.sheetSecondaryRow}>
-              <Pressable hitSlop={8} onPress={restart}>
+              <Pressable accessibilityRole="button" hitSlop={8} onPress={restart}>
                 <Text style={styles.sheetSecondary}>replay</Text>
               </Pressable>
               <Text style={styles.sheetDot}>·</Text>
-              <Pressable hitSlop={8} onPress={onExit}>
+              <Pressable accessibilityRole="button" hitSlop={8} onPress={onExit}>
                 <Text style={styles.sheetSecondary}>home</Text>
               </Pressable>
             </View>
@@ -325,7 +326,6 @@ const styles = StyleSheet.create({
   sheetKicker: { ...typeScale.label, ...trackedUpper, color: palette.accent },
   sheetMoves: { ...typeScale.display, color: palette.text, fontVariant: ["tabular-nums"] },
   sheetMovesUnit: { fontSize: 16, color: palette.textDim, fontWeight: "400" },
-  sheetStrip: { width: "100%", height: 10, borderRadius: 5 },
   primaryButton: {
     backgroundColor: palette.accent,
     paddingVertical: 14,

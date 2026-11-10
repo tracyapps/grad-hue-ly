@@ -1,166 +1,113 @@
 /**
- * Quantization-aware color finalization — the last mile.
+ * Quantization — the last mile from a perfect OKLab surface to 8-bit hex.
  *
- * Everything upstream is perceptually uniform OKLab, but screens show 8-bit
- * sRGB, and sRGB quantization steps are NOT perceptually even: rounding can
- * erase a subtle step entirely or inflate it, and Lab-space repairs round
- * unpredictably. So finalization happens in hex space, where every repair is
- * exactly one 1/255 step — the smallest change a display can express —
- * nudged along the gradient's own direction.
+ * Plain per-channel rounding throws away up to half a code value on every
+ * channel independently, so two neighbors can round in opposite directions
+ * and a whisper-quiet step suddenly looks twice as big (or vanishes). Here
+ * each tile instead picks among the 8 floor/ceil corners of its 8-bit cell,
+ * choosing the combination that best preserves the DIFFERENCES between
+ * neighbors (what the eye compares across a grout line), not just each
+ * tile's absolute color. A few Gauss-Seidel sweeps settle it.
  */
 
-import { Lab, deltaEok, hexToLab, labToHex } from "./color";
-import { GridSpec, adjacentPairs } from "./grid";
+import { Lab, Rgb, hexToLab, labToRgb, rgbToHex } from "./color";
+import { labToP, type Vec3 } from "./field";
 
-/** All hexes reachable by ±1 on one or two channels. */
-function hexNeighbors(hex: string): string[] {
-  const r = parseInt(hex.slice(1, 3), 16);
-  const g = parseInt(hex.slice(3, 5), 16);
-  const b = parseInt(hex.slice(5, 7), 16);
-  const out: string[] = [];
-  const chans: Array<[number, number]> = [
-    [0, r],
-    [1, g],
-    [2, b],
-  ];
-  const bump = (vals: [number, number, number]) =>
-    `#${vals.map((v) => Math.max(0, Math.min(255, v)).toString(16).padStart(2, "0")).join("")}`;
+const sub = (a: Vec3, b: Vec3): Vec3 => [a[0] - b[0], a[1] - b[1], a[2] - b[2]];
+const sq = (a: Vec3) => a[0] * a[0] + a[1] * a[1] + a[2] * a[2];
 
-  for (const [ci, cv] of chans) {
-    for (const d of [-1, 1]) {
-      const vals: [number, number, number] = [r, g, b];
-      vals[ci] = cv + d;
-      out.push(bump(vals));
-      // diagonal steps too — finer direction control
-      for (const [cj, cvj] of chans) {
-        if (cj === ci) continue;
-        for (const dj of [-1, 1]) {
-          const v2: [number, number, number] = [vals[0], vals[1], vals[2]];
-          v2[cj] = cvj + dj;
-          out.push(bump(v2));
+/** Weight of "stay close to the ideal color" vs "keep steps faithful". */
+const ANCHOR = 0.35;
+const SWEEPS = 6;
+
+export function quantizeField(labs: Lab[], cols: number, rows: number): string[] {
+  const n = labs.length;
+  const ideal = labs.map(labToP);
+
+  // Candidate hexes (and their P-space positions) per tile.
+  const cands: string[][] = [];
+  const candP: Vec3[][] = [];
+  for (let i = 0; i < n; i++) {
+    const rgb: Rgb = labToRgb(labs[i]);
+    const opts = new Set<string>();
+    for (const fr of [Math.floor, Math.ceil])
+      for (const fg of [Math.floor, Math.ceil])
+        for (const fb of [Math.floor, Math.ceil])
+          opts.add(rgbToHex({ r: fr(rgb.r), g: fg(rgb.g), b: fb(rgb.b) }));
+    const list = [...opts];
+    cands.push(list);
+    candP.push(list.map((h) => labToP(hexToLab(h))));
+  }
+
+  const neighbors: number[][] = [];
+  for (let i = 0; i < n; i++) {
+    const x = i % cols;
+    const y = (i - x) / cols;
+    const ns: number[] = [];
+    if (x > 0) ns.push(i - 1);
+    if (x < cols - 1) ns.push(i + 1);
+    if (y > 0) ns.push(i - cols);
+    if (y < rows - 1) ns.push(i + cols);
+    neighbors.push(ns);
+  }
+
+  // Start from the closest candidate.
+  const choice = new Array<number>(n);
+  for (let i = 0; i < n; i++) {
+    let best = 0;
+    let bestD = Infinity;
+    candP[i].forEach((p, k) => {
+      const d = sq(sub(p, ideal[i]));
+      if (d < bestD) {
+        bestD = d;
+        best = k;
+      }
+    });
+    choice[i] = best;
+  }
+
+  for (let sweep = 0; sweep < SWEEPS; sweep++) {
+    let changed = false;
+    for (let i = 0; i < n; i++) {
+      let best = choice[i];
+      let bestCost = Infinity;
+      for (let k = 0; k < candP[i].length; k++) {
+        const q = candP[i][k];
+        let cost = ANCHOR * sq(sub(q, ideal[i]));
+        for (const j of neighbors[i]) {
+          const qj = candP[j][choice[j]];
+          const want = sub(ideal[i], ideal[j]);
+          const got = sub(q, qj);
+          cost += sq(sub(got, want));
+        }
+        if (cost < bestCost) {
+          bestCost = cost;
+          best = k;
         }
       }
-    }
-  }
-  return [...new Set(out)];
-}
-
-/**
- * Lift every adjacent pair above `floor` with minimal exact steps. `guide`
- * carries the pre-quantization OKLab field so repairs move WITH the flow,
- * never across it.
- */
-function relaxHex(
-  colors: string[],
-  grid: GridSpec,
-  guide: Lab[],
-  floor: number,
-): string[] {
-  const hex = [...colors];
-  const labs = hex.map(hexToLab);
-  const pairs = adjacentPairs(grid);
-
-  for (let pass = 0; pass < 8; pass++) {
-    let moved = false;
-    for (const [i, j] of pairs) {
-      const d = deltaEok(labs[i], labs[j]);
-      if (d >= floor) continue;
-
-      // The gradient's direction across this pair (from the smooth field).
-      const dir = {
-        l: guide[j].l - guide[i].l,
-        a: guide[j].a - guide[i].a,
-        b: guide[j].b - guide[i].b,
-      };
-
-      // Move tile j among its exact 1-step neighbors to just clear the
-      // floor, along the flow, with the least overshoot.
-      let best: string | null = null;
-      let bestScore = Infinity;
-      for (const cand of hexNeighbors(hex[j])) {
-        const candLab = hexToLab(cand);
-        const dd = deltaEok(labs[i], candLab);
-        if (dd < floor * 0.98) continue;
-        const along =
-          (candLab.l - labs[j].l) * dir.l +
-          (candLab.a - labs[j].a) * dir.a +
-          (candLab.b - labs[j].b) * dir.b;
-        if (along <= 0) continue; // never fight the gradient
-        const overshoot = Math.abs(dd - floor * 1.15);
-        const score = overshoot - along * 20; // prefer flow-aligned, minimal overshoot
-        if (score < bestScore) {
-          bestScore = score;
-          best = cand;
-        }
-      }
-      if (best) {
-        hex[j] = best;
-        labs[j] = hexToLab(best);
-        moved = true;
+      if (best !== choice[i]) {
+        choice[i] = best;
+        changed = true;
       }
     }
-    if (!moved) break;
+    if (!changed) break;
   }
-  return hex;
-}
 
-/** Hex-level uniqueness: identical colors get a single-channel ±1 bump. */
-function dedupeHex(colors: string[]): string[] {
+  const out = choice.map((k, i) => cands[i][k]);
+
+  // Literal uniqueness (geometry already guarantees it for engine boards;
+  // Studio art can be flat in places).
   const seen = new Set<string>();
-  return colors.map((hex) => {
-    if (!seen.has(hex)) {
-      seen.add(hex);
-      return hex;
-    }
+  return out.map((hex) => {
     let h = hex;
     for (let guard = 1; seen.has(h) && guard <= 24; guard++) {
-      const r = parseInt(h.slice(1, 3), 16);
-      const g = parseInt(h.slice(3, 5), 16);
-      const b = parseInt(h.slice(5, 7), 16);
-      const vals: [number, number, number] = [r, g, b];
-      const ci = guard % 3;
-      vals[ci] = vals[ci] < 255 ? vals[ci] + 1 : vals[ci] - 1;
-      h = `#${vals.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+      const v = [1, 3, 5].map((o) => parseInt(hex.slice(o, o + 2), 16));
+      const ch = guard % 3;
+      const delta = Math.ceil(guard / 3) * (v[ch] < 128 ? 1 : -1);
+      v[ch] = Math.max(0, Math.min(255, v[ch] + delta));
+      h = rgbToHex({ r: v[0], g: v[1], b: v[2] });
     }
     seen.add(h);
     return h;
   });
-}
-
-/**
- * Full finalization: quantize → restore any contrast the rounding stole →
- * relax exact steps → guarantee literal uniqueness.
- *
- * - `meanFloor`: difficulty band floor for the MEAN adjacent ΔEok post-hex
- *   (engine-generated boards). Omit to leave an artwork's own contrast
- *   untouched (Studio boards).
- * - `adjacentFloor`: minimum adjacent ΔEok every pair must clear after
- *   quantization — keeps parallel rows distinguishable everywhere.
- */
-export function finalizeColors(
-  labs: Lab[],
-  grid: GridSpec,
-  opts: { meanFloor?: number; adjacentFloor?: number } = {},
-): string[] {
-  const adjacentFloor = opts.adjacentFloor ?? 0.0055;
-
-  // Quantization compresses the mean slightly; if it dipped below the band,
-  // scale the smooth field up a touch and requantize (≤3 rounds).
-  let scaled = labs;
-  let hex = scaled.map(labToHex);
-  if (opts.meanFloor !== undefined) {
-    for (let round = 0; round < 3; round++) {
-      const pairs = adjacentPairs(grid);
-      let mean = 0;
-      for (const [i, j] of pairs) mean += deltaEok(hexToLab(hex[i]), hexToLab(hex[j]));
-      mean /= pairs.length;
-      if (mean >= opts.meanFloor * 0.98) break;
-      scaled = scaled.map((c) => ({ l: c.l, a: c.a * 1.06, b: c.b * 1.06 }));
-      hex = scaled.map(labToHex);
-    }
-  }
-
-  const target = Math.max(adjacentFloor, (opts.meanFloor ?? 0) * 0.28);
-  const relaxed = relaxHex(hex, grid, scaled, target);
-  return dedupeHex(relaxed);
 }

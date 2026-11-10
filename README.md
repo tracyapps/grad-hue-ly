@@ -1,56 +1,33 @@
-# Welcome to your Expo app 👋
+# grad[hue]ly
 
-This is an [Expo](https://expo.dev) project created with [`create-expo-app`](https://www.npmjs.com/package/create-expo-app).
-
-## Get started
-
-1. Install dependencies
-
-   ```bash
-   npm install
-   ```
-
-2. Start the app
-
-   ```bash
-   npx expo start
-   ```
-
-In the output, you'll find options to open the app in a
-
-- [development build](https://docs.expo.dev/develop/development-builds/introduction/)
-- [Android emulator](https://docs.expo.dev/workflow/android-studio-emulator/)
-- [iOS simulator](https://docs.expo.dev/workflow/ios-simulator/)
-- [Expo Go](https://expo.dev/go), a limited sandbox for trying out app development with Expo
-
-You can start developing by editing the files inside the **src/app** directory. This project uses [file-based routing](https://docs.expo.dev/router/introduction).
-
-## Get a fresh project
-
-When you're ready, run:
+Endless, zen gradient puzzles — Expo (web + iOS + Android).
 
 ```bash
-npm run reset-project
+npm install
+npx expo start          # dev server (press w for web)
+npm test                # engine invariants (vitest)
+npx tsc --noEmit        # typecheck
+npx tsx scripts/audit/audit.ts 600   # gradient quality report, levels 1–600
 ```
 
-This command will move the starter code to the **example** directory and create a blank **src/app** directory where you can start developing.
+## How a board is made (src/engine)
 
-### Other setup steps
+- **field.ts** — every board is a smooth surface in OKLab: two *orthogonal*
+  flows (a hue arc or straight sweep, and a lightness/chroma ramp) plus an
+  optional twist perpendicular to both. Steps are constant along every row and
+  column, two tiles in different places can never look alike, and the whole
+  surface is checked against the sRGB gamut before it's accepted — nothing is
+  clamped, so nothing kinks.
+- **quantize.ts** — picks each tile's 8-bit color to preserve the *differences*
+  between neighbors, not just each color on its own.
+- **difficulty.ts** — the curve: a 17-rung size ladder (4×4 → 10×14) and a step
+  size in ΔE_OK2 that never drops below `MIN_STEP` (0.036).
+- **palettes.ts** — one color mood per chapter.
 
-- To set up ESLint for linting, run `npx expo lint`, or follow our guide on ["Using ESLint and Prettier"](https://docs.expo.dev/guides/using-eslint/)
-- If you'd like to set up unit testing, follow our guide on ["Unit Testing with Jest"](https://docs.expo.dev/develop/unit-testing/)
-- Learn more about the TypeScript setup in this template in our guide on ["Using TypeScript"](https://docs.expo.dev/guides/typescript/)
+`fieldQuality()` reports evenness, kinks ("jumps") and twins (ambiguity); the
+tests run it over levels 1–400 and several worlds.
 
-## Learn more
+## Playing
 
-To learn more about developing your project with Expo, look at the following resources:
-
-- [Expo documentation](https://docs.expo.dev/): Learn fundamentals, or go into advanced topics with our [guides](https://docs.expo.dev/guides).
-- [Learn Expo tutorial](https://docs.expo.dev/tutorial/introduction/): Follow a step-by-step tutorial where you'll create a project that runs on Android, iOS, and the web.
-
-## Join the community
-
-Join our community of developers creating universal apps.
-
-- [Expo on GitHub](https://github.com/expo/expo): View our open source platform and contribute.
-- [Discord community](https://chat.expo.dev): Chat with Expo users and ask questions.
+Drag a tile onto another, **or** tap two tiles, **or** (web) use the arrow keys
+and Space/Enter. Escape puts a picked-up tile back.

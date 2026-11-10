@@ -13,8 +13,9 @@ export const palette = {
   surfaceRaised: "#282330",
   /** Warm off-white text. */
   text: "#ECE7E1",
-  textDim: "#9A939E",
-  textFaint: "#6B6572",
+  textDim: "#ABA4AF",
+  /** Quietest text — still ≥ 4.5:1 on every surface (WCAG AA). */
+  textFaint: "#958E9C",
   /** Accent — soft coral, echoing the original's warmth. */
   accent: "#E08E6D",
   accentSoft: "#E08E6D33",

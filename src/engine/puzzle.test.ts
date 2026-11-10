@@ -1,20 +1,29 @@
 import { describe, expect, it } from "vitest";
 import { Rng, hashSeed } from "./rng";
-import { makeRect, adjacentPairs } from "./grid";
-import { generateCornerField } from "./field";
+import { generateField, fieldQuality, bilinearField, resampleField } from "./field";
 import { shuffledPlacement } from "./shuffle";
 import {
   generateLevel,
   generateToday,
   generateZen,
+  generatePuzzle,
   puzzleFromColors,
+  puzzleFromField,
   isSolved,
   applySwap,
   applyCornerLocks,
   cornerCells,
 } from "./puzzle";
-import { levelParams, chapterName, CHAPTER_SIZE, zenParams } from "./difficulty";
-import { deltaEok, hexToLab } from "./color";
+import {
+  levelParams,
+  chapterName,
+  CHAPTER_SIZE,
+  zenParams,
+  MIN_STEP,
+  SIZE_LADDER,
+} from "./difficulty";
+import { CHAPTER_MOODS } from "./palettes";
+import { hexToLab, inGamut } from "./color";
 
 describe("Rng", () => {
   it("is deterministic for a given seed", () => {
@@ -35,40 +44,69 @@ describe("Rng", () => {
   });
 });
 
-describe("corner field generation", () => {
-  const grid = makeRect(8, 10);
+describe("field generation", () => {
+  it("hits the step target exactly, in gamut, every chapter mood", () => {
+    CHAPTER_MOODS.forEach((mood, i) => {
+      for (const [cols, rows] of [SIZE_LADDER[0], SIZE_LADDER[8], SIZE_LADDER[16]]) {
+        const step = Math.max(MIN_STEP, 0.4 / (Math.max(cols, rows) - 1));
+        const f = generateField(new Rng(1000 + i), { cols, rows, step, twist: [0.2, 0.6], mood });
+        expect(f.labs).toHaveLength(cols * rows);
+        for (const lab of f.labs) expect(inGamut(lab)).toBe(true);
+        const q = fieldQuality(f.labs, cols, rows);
+        // Exact target, or (rare last resort) at most 10% gentler.
+        expect(q.meanStep).toBeGreaterThan(step * 0.89);
+        expect(q.meanStep).toBeLessThan(step * 1.01);
+      }
+    });
+  });
 
-  it("produces valid colors in the requested mean contrast band", () => {
-    const rng = new Rng(777);
-    const p = levelParams(80);
-    const field = generateCornerField(rng, grid, p, p.cornerMode);
-    expect(field.labs).toHaveLength(80);
-    for (const lab of field.labs) {
-      expect(lab.l).toBeGreaterThan(0.05);
-      expect(lab.l).toBeLessThan(1);
+  it("never produces mirrored corners (the old level-2 bug)", () => {
+    for (let seed = 0; seed < 60; seed++) {
+      const f = generateField(new Rng(seed), {
+        cols: 5,
+        rows: 5,
+        step: 0.1,
+        twist: [0, 0.25],
+        mood: CHAPTER_MOODS[seed % CHAPTER_MOODS.length],
+      });
+      const q = fieldQuality(f.labs, 5, 5);
+      // Every non-neighbor is at least a full step away.
+      expect(q.twin).toBeGreaterThan(1);
     }
-    expect(field.meanAdjacent).toBeGreaterThanOrEqual(p.minAdjacentDelta * 0.97);
-    expect(field.meanAdjacent).toBeLessThanOrEqual(p.maxAdjacentDelta * 1.15);
   });
 
-  it("corner colors flow to the corners of the field", () => {
-    const rng = new Rng(2024);
-    const p = levelParams(60);
-    const field = generateCornerField(rng, grid, p, p.cornerMode);
-    const [tl, tr, bl, br] = field.corners;
-    expect(deltaEok(field.labs[0], tl)).toBeLessThan(0.01);
-    expect(deltaEok(field.labs[7], tr)).toBeLessThan(0.01);
-    expect(deltaEok(field.labs[72], bl)).toBeLessThan(0.01);
-    expect(deltaEok(field.labs[79], br)).toBeLessThan(0.01);
+  it("corner blends sample their corners exactly", () => {
+    const corners = ["#e5b95c", "#b48cd9", "#7fb99b", "#4e6fb8"].map(hexToLab) as [
+      ReturnType<typeof hexToLab>,
+      ReturnType<typeof hexToLab>,
+      ReturnType<typeof hexToLab>,
+      ReturnType<typeof hexToLab>,
+    ];
+    const f = bilinearField(corners, 7, 9);
+    expect(f[0]).toEqual(corners[0]);
+    expect(f[6]).toEqual(corners[1]);
+    expect(f[56]).toEqual(corners[2]);
+    expect(f[62]).toEqual(corners[3]);
   });
 
-  it("all tile colors are perceptually distinct", () => {
-    const rng = new Rng(31337);
-    const p = levelParams(200);
-    const field = generateCornerField(rng, makeRect(p.cols, p.rows), p, p.cornerMode);
-    // Engine contract: constant uniqueness floor (distant tiles may sit
-    // closer than neighbors — they're never compared side by side).
-    expect(field.minPairwise).toBeGreaterThanOrEqual(0.0012);
+  it("resampling a smooth grid stays smooth (no nearest-neighbor jumps)", () => {
+    const corners = ["#e5b95c", "#b48cd9", "#7fb99b", "#4e6fb8"].map(hexToLab) as [
+      ReturnType<typeof hexToLab>,
+      ReturnType<typeof hexToLab>,
+      ReturnType<typeof hexToLab>,
+      ReturnType<typeof hexToLab>,
+    ];
+    // A 12×18 canonical grid resampled to 10×14 — the Studio's worst case.
+    const canonical = bilinearField(corners, 12, 18);
+    const resampled = resampleField(canonical, 12, 18, 10, 14);
+    const q = fieldQuality(resampled, 10, 14);
+    expect(q.evenness).toBeLessThan(1.05);
+    // The old nearest-neighbor path skipped columns: 2× steps beside 1×.
+    const nearest: typeof canonical = [];
+    for (let y = 0; y < 14; y++)
+      for (let x = 0; x < 10; x++)
+        nearest.push(canonical[Math.round((y / 13) * 17) * 12 + Math.round((x / 9) * 11)]);
+    expect(fieldQuality(nearest, 10, 14).evenness).toBeGreaterThan(1.8);
   });
 });
 
@@ -114,100 +152,105 @@ describe("corner assist", () => {
 
 describe("difficulty curve", () => {
   it("keeps board sizes inside the promised envelope", () => {
-    for (let level = 1; level <= 500; level++) {
+    for (let level = 1; level <= 600; level++) {
       const p = levelParams(level);
       expect(p.cols).toBeGreaterThanOrEqual(4);
       expect(p.cols).toBeLessThanOrEqual(10);
       expect(p.rows).toBeGreaterThanOrEqual(p.cols);
       expect(p.rows).toBeLessThanOrEqual(14);
-      expect(["diagonal", "quad"]).toContain(p.cornerMode);
-      expect(p.minAdjacentDelta).toBeGreaterThan(0.007);
-      expect(p.maxAdjacentDelta).toBeGreaterThan(p.minAdjacentDelta);
+      expect(p.step).toBeGreaterThanOrEqual(MIN_STEP);
+      expect(p.step).toBeLessThanOrEqual(0.14);
     }
   });
 
-  it("gets perceptually subtler over time", () => {
-    const early = levelParams(10).minAdjacentDelta;
-    const mid = levelParams(80).minAdjacentDelta;
-    const late = levelParams(300).minAdjacentDelta;
-    expect(early).toBeGreaterThan(mid);
-    expect(mid).toBeGreaterThan(late);
+  it("gets subtler and bigger over time", () => {
+    expect(levelParams(3).step).toBeGreaterThan(levelParams(80).step);
+    expect(levelParams(80).step).toBeGreaterThan(levelParams(300).step);
+    expect(levelParams(1).cols * levelParams(1).rows).toBeLessThan(
+      levelParams(300).cols * levelParams(300).rows,
+    );
   });
 
-  it("chapters have names, cycling with numerals", () => {
+  it("chapters have names and moods, cycling with numerals", () => {
     expect(chapterName(1)).toBe("DAWN");
-    const lastChapterFirstCycle = CHAPTER_SIZE * 24; // level 600 → chapter 23 "PRISM"
+    const lastChapterFirstCycle = CHAPTER_SIZE * 24;
     expect(chapterName(lastChapterFirstCycle)).toBe("PRISM");
     expect(chapterName(lastChapterFirstCycle + 1)).toBe("DAWN II");
+    expect(levelParams(1).mood).toBe(CHAPTER_MOODS[0]);
+    expect(levelParams(26).mood).toBe(CHAPTER_MOODS[1]);
   });
 });
 
 describe("puzzle generation", () => {
-  const SAMPLE_LEVELS = [1, 2, 8, 15, 50, 100, 180, 300, 420];
-
   it("is deterministic per level and world", () => {
     expect(generateLevel(42)).toEqual(generateLevel(42));
     expect(generateLevel(42, 999)).not.toEqual(generateLevel(42));
   });
 
-  it("generates solvable, distinct, in-band puzzles across the curve", () => {
-    for (const level of SAMPLE_LEVELS) {
+  it("every level 1–400 is fair: even, jump-free, twin-free, distinct", () => {
+    for (let level = 1; level <= 400; level++) {
       const puzzle = generateLevel(level);
       const n = puzzle.cols * puzzle.rows;
-
       expect(puzzle.colors).toHaveLength(n);
-      expect(puzzle.placement).toHaveLength(n);
+      expect(new Set(puzzle.colors).size).toBe(n);
       expect(isSolved(puzzle.placement)).toBe(false);
-      expect(new Set(puzzle.colors).size).toBe(n); // every tile unique
-      for (const hex of puzzle.colors) expect(hex).toMatch(/^#[0-9a-f]{6}$/);
-
-      // Mean adjacent contrast honors the (possibly relaxed) floor, and no
-      // single pair drops below the hard distinctness floor.
-      const grid = makeRect(puzzle.cols, puzzle.rows);
-      const labs = puzzle.colors.map(hexToLab);
-      const deltas = adjacentPairs(grid).map(([i, j]) => deltaEok(labs[i], labs[j]));
-      const mean = deltas.reduce((s, d) => s + d, 0) / deltas.length;
-      expect(mean).toBeGreaterThanOrEqual(puzzle.params.minAdjacentDelta * 0.95);
-      expect(Math.min(...deltas)).toBeGreaterThanOrEqual(0.004);
+      const q = fieldQuality(puzzle.colors.map(hexToLab), puzzle.cols, puzzle.rows);
+      // What the screen shows (after 8-bit quantization):
+      expect(q.evenness).toBeLessThan(1.35); // no row/column has uneven steps
+      expect(q.kink).toBeLessThan(0.3); // no jumps
+      expect(q.twin).toBeGreaterThan(1); // no two far-apart tiles look alike
+      expect(q.minStep).toBeGreaterThan(0.027); // every neighbor visibly different
     }
   });
 
-  it("level one is a gentle 4-wide diagonal flow", () => {
+  it("other worlds are just as fair", () => {
+    for (const world of [1, 77, 4242]) {
+      for (let level = 1; level <= 300; level += 7) {
+        const p = generateLevel(level, world);
+        const q = fieldQuality(p.colors.map(hexToLab), p.cols, p.rows);
+        expect(q.twin).toBeGreaterThan(1);
+        expect(q.evenness).toBeLessThan(1.35);
+      }
+    }
+  });
+
+  it("level one is a small, clear board", () => {
     const p1 = generateLevel(1);
     expect(p1.cols).toBe(4);
-    expect(p1.params.cornerMode).toBe("diagonal");
+    expect(p1.params.step).toBeGreaterThan(0.09);
   });
 
   it("top-end boards reach 10 wide and tall", () => {
-    const p300 = generateLevel(300);
-    expect(p300.cols).toBe(10);
-    expect(p300.rows).toBeGreaterThanOrEqual(12);
+    const sizes = [281, 283, 287, 291, 299, 301, 303].map((l) => levelParams(l));
+    expect(sizes.some((p) => p.cols === 10 && p.rows >= 13)).toBe(true);
   });
 
-  it("today and zen generators are stable per input", () => {
+  it("today and zen generators are stable and fair", () => {
     expect(generateToday("2025-11-09")).toEqual(generateToday("2025-11-09"));
     expect(generateToday("2025-11-09")).not.toEqual(generateToday("2025-11-10"));
-    expect(generateZen(5, { size: "grand", subtlety: "ethereal" })).toEqual(
-      generateZen(5, { size: "grand", subtlety: "ethereal" }),
+    const z = generateZen(5, { size: "grand", subtlety: "ethereal" });
+    expect(z).toEqual(generateZen(5, { size: "grand", subtlety: "ethereal" }));
+    expect(zenParams({ size: "grand" }).cols).toBe(10);
+    for (let nonce = 0; nonce < 20; nonce++) {
+      const p = generateZen(nonce, { size: "grand", subtlety: "ethereal" });
+      expect(fieldQuality(p.colors.map(hexToLab), p.cols, p.rows).twin).toBeGreaterThan(1);
+    }
+  });
+
+  it("a hand-made params object works (the onboarding teach board)", () => {
+    const p = generatePuzzle(
+      { ...levelParams(1), cols: 3, rows: 3, step: 0.14, revealMs: 2600 },
+      1337,
     );
-    expect(zenParams({ size: "grand" }).cornerMode).toBe("quad");
+    expect(p.colors).toHaveLength(9);
   });
 });
 
 describe("puzzles from explicit colors (Studio)", () => {
   it("builds a distinct, shuffled, solvable board at any size", () => {
-    const src = generateLevel(60); // reuse a known-good palette
-    const cols = 6;
-    const rows = 8;
-    const sampled: string[] = [];
-    for (let y = 0; y < rows; y++) {
-      for (let x = 0; x < cols; x++) {
-        const sx = Math.round((x / (cols - 1)) * (src.cols - 1));
-        const sy = Math.round((y / (rows - 1)) * (src.rows - 1));
-        sampled.push(src.colors[sy * src.cols + sx]);
-      }
-    }
-    const p = puzzleFromColors(sampled, cols, rows, 12345);
+    const src = generateLevel(60);
+    const field = resampleField(src.colors.map(hexToLab), src.cols, src.rows, 6, 8);
+    const p = puzzleFromField(field, 6, 8, 12345);
     expect(p.colors).toHaveLength(48);
     expect(new Set(p.colors).size).toBe(48);
     expect(isSolved(p.placement)).toBe(false);
@@ -219,104 +262,16 @@ describe("puzzles from explicit colors (Studio)", () => {
   it("rejects mismatched color counts", () => {
     expect(() => puzzleFromColors(["#ffffff", "#000000"], 3, 3, 1)).toThrow();
   });
-});
 
-describe("boards are true multidimensional gradients", () => {
-  it("solved boards fit a bilinear corner model closely (the game-1 look)", () => {
-    // Least-squares fit of each solved board against a bilinear model in
-    // OKLab; R² must be high — boards are flows from corner sources, never
-    // abstract noise.
-    for (const level of [1, 17, 60, 300]) {
-      const puzzle = generateLevel(level);
-      const labs = puzzle.colors.map(hexToLab);
-      const { cols, rows } = puzzle;
-      const n = labs.length;
-
-      // Design matrix per channel: [1, u, v, u·v] — solve normal equations.
-      const X = (x: number, y: number) => {
-        const u = x / (cols - 1);
-        const v = y / (rows - 1);
-        return [1, u, v, u * v];
-      };
-      const solve = (key: "l" | "a" | "b") => {
-        const A = [0, 0, 0, 0].map(() => [0, 0, 0, 0]);
-        const b = [0, 0, 0, 0];
-        let ssTot = 0;
-        let mean = 0;
-        for (const lab of labs) mean += lab[key];
-        mean /= n;
-        for (let i = 0; i < n; i++) {
-          const x = X(i % cols, Math.floor(i / cols));
-          const y = labs[i][key];
-          for (let r = 0; r < 4; r++) {
-            for (let c = 0; c < 4; c++) A[r][c] += x[r] * x[c];
-            b[r] += x[r] * y;
-          }
-          ssTot += (y - mean) ** 2;
-        }
-        // Solve 4×4 via Gaussian elimination.
-        const M = A.map((row, r) => [...row, b[r]]);
-        for (let col = 0; col < 4; col++) {
-          let piv = col;
-          for (let r = col + 1; r < 4; r++) if (Math.abs(M[r][col]) > Math.abs(M[piv][col])) piv = r;
-          [M[col], M[piv]] = [M[piv], M[col]];
-          for (let r = 0; r < 4; r++) {
-            if (r === col) continue;
-            const f = M[r][col] / M[col][col];
-            for (let c = col; c < 5; c++) M[r][c] -= f * M[col][c];
-          }
-        }
-        const beta = [0, 1, 2, 3].map((r) => M[r][4] / M[r][r]);
-        let ssRes = 0;
-        for (let i = 0; i < n; i++) {
-          const x = X(i % cols, Math.floor(i / cols));
-          const pred = beta[0] + beta[1] * x[1] + beta[2] * x[2] + beta[3] * x[3];
-          ssRes += (labs[i][key] - pred) ** 2;
-        }
-        return 1 - ssRes / ssTot;
-      };
-      const r2 = (solve("l") + solve("a") + solve("b")) / 3;
-      expect(r2).toBeGreaterThan(0.88);
-    }
-  });
-});
-
-describe("gradient smoothness (the no-jumps invariant)", () => {
-  const statsFor = (level: number) => {
-    const puzzle = generateLevel(level);
-    const grid = makeRect(puzzle.cols, puzzle.rows);
-    const labs = puzzle.colors.map(hexToLab);
-    const deltas = adjacentPairs(grid)
-      .map(([i, j]) => deltaEok(labs[i], labs[j]))
-      .sort((a, b) => a - b);
-    const mean = deltas.reduce((s, d) => s + d, 0) / deltas.length;
-    const median = deltas[Math.floor(deltas.length / 2)];
-    const variance = deltas.reduce((s, d) => s + (d - mean) ** 2, 0) / deltas.length;
-    return {
-      min: deltas[0],
-      max: deltas[deltas.length - 1],
-      median,
-      cv: Math.sqrt(variance) / mean,
-    };
-  };
-
-  it("no perceptual jumps: max step stays near the typical step", () => {
-    for (const level of [10, 60, 150, 300]) {
-      const s = statsFor(level);
-      // A visible "jump" is a single step far larger than its neighbors.
-      expect(s.max).toBeLessThanOrEqual(s.median * 4.5);
-      // ...and the step distribution stays even, not lumpy.
-      expect(s.cv).toBeLessThanOrEqual(0.95);
-    }
-  });
-
-  it("parallel rows stay distinguishable at whisper difficulty", () => {
-    // The ambiguity fix: even the calmest adjacent pair can't slip below
-    // the row-distinguishable floor after 8-bit quantization.
-    for (const level of [200, 300, 420]) {
-      const s = statsFor(level);
-      expect(s.min).toBeGreaterThanOrEqual(0.004);
-    }
+  it("flags ambiguous designs: mirrored corners make twins", () => {
+    // TR == BL: tile (x, y) and (y, x) become the same color.
+    const corners = ["#3fb8b0", "#5a6a90", "#5a6a90", "#c86fcf"].map(hexToLab) as [
+      ReturnType<typeof hexToLab>,
+      ReturnType<typeof hexToLab>,
+      ReturnType<typeof hexToLab>,
+      ReturnType<typeof hexToLab>,
+    ];
+    expect(fieldQuality(bilinearField(corners, 5, 5), 5, 5).twin).toBeLessThan(0.1);
   });
 });
 

@@ -8,14 +8,13 @@ import {
   generateToday,
   generateZen,
   hashSeed,
-  puzzleFromColors,
-  resampleColors,
+  puzzleFromField,
   type Puzzle,
   type ZenSize,
   type ZenSubtlety,
 } from "@/engine";
 import { useProfile } from "@/state/profile";
-import { CANONICAL_COLS, CANONICAL_ROWS, useStudio } from "@/state/studio";
+import { gradientField, useStudio } from "@/state/studio";
 import { palette, type as typeScale } from "@/theme";
 
 interface RouteInfo {
@@ -27,6 +26,7 @@ interface RouteInfo {
   subtlety?: ZenSubtlety;
   studioId?: string;
   grid?: string;
+  zenNonce?: number;
   missing?: boolean;
 }
 
@@ -64,6 +64,7 @@ export default function PlayRoute() {
         subtitle: `${zSize} · ${zSub}`,
         size: zSize,
         subtlety: zSub,
+        zenNonce: nonce,
       };
     }
     if (mode === "studio" && params.id) {
@@ -73,15 +74,13 @@ export default function PlayRoute() {
       }
       const cols = Math.min(12, Math.max(3, Number(params.cols ?? 7)));
       const rows = Math.min(14, Math.max(3, Number(params.rows ?? 9)));
-      const colors = resampleColors(
-        gradient.canonical,
-        CANONICAL_COLS,
-        CANONICAL_ROWS,
-        cols,
-        rows,
-      );
       return {
-        puzzle: puzzleFromColors(colors, cols, rows, hashSeed("studio", gradient.id, cols, rows, worldSeed)),
+        puzzle: puzzleFromField(
+          gradientField(gradient, cols, rows),
+          cols,
+          rows,
+          hashSeed("studio", gradient.id, cols, rows, worldSeed),
+        ),
         title: gradient.name.toUpperCase().slice(0, 22),
         subtitle: `studio · ${cols}×${rows}`,
         studioId: gradient.id,
@@ -101,7 +100,7 @@ export default function PlayRoute() {
     return (
       <View style={missingStyles.center}>
         <Text style={missingStyles.text}>this gradient is no longer in the library</Text>
-        <Pressable onPress={() => router.replace("/")}>
+        <Pressable accessibilityRole="button" onPress={() => router.replace("/")}>
           <Text style={missingStyles.link}>home</Text>
         </Pressable>
       </View>
@@ -139,6 +138,7 @@ export default function PlayRoute() {
       subtlety={info.subtlety}
       studioId={info.studioId}
       grid={info.grid}
+      zenNonce={info.zenNonce}
       title={info.title}
       subtitle={info.subtitle}
       onNext={onNext}

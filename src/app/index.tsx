@@ -1,7 +1,9 @@
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { chapterName } from "@/engine";
+import { useMemo } from "react";
+import { chapterName, generateLevel } from "@/engine";
+import MiniBoard from "@/components/MiniBoard";
 import { useProfile } from "@/state/profile";
 import GradientBackdrop from "@/components/GradientBackdrop";
 import Onboarding from "@/components/play/Onboarding";
@@ -13,7 +15,9 @@ export default function Home() {
   const onboarded = useProfile((s) => s.onboarded);
   const setOnboarded = useProfile((s) => s.setOnboarded);
   const reduceMotion = useProfile((s) => s.settings.reduceMotion);
+  const worldSeed = useProfile((s) => s.worldSeed);
   const todayKey = new Date().toISOString().slice(0, 10);
+  const next = useMemo(() => generateLevel(level, worldSeed), [level, worldSeed]);
   const todayDone = useProfile((s) => s.today[todayKey]?.solved ?? false);
 
   const openLevel = (n: number) =>
@@ -35,15 +39,24 @@ export default function Home() {
         <Text style={styles.tagline}>endless gradients, at your pace</Text>
 
         {/* Continue */}
-        <Pressable style={styles.cardPrimary} onPress={() => openLevel(level)}>
+        <Pressable
+          style={styles.cardPrimary}
+          onPress={() => openLevel(level)}
+          accessibilityRole="button"
+          accessibilityLabel={`Continue: ${chapterName(level)}, level ${level}`}
+        >
+          <MiniBoard colors={next.colors} cols={next.cols} rows={next.rows} height={58} radius={6} />
           <View style={styles.cardPrimaryLeft}>
             <Text style={styles.cardKicker}>continue</Text>
             <Text style={styles.cardTitle}>
               {chapterName(level)} · {level}
             </Text>
+            <Text style={styles.cardMeta}>
+              {next.cols} × {next.rows}
+            </Text>
           </View>
           <View style={styles.steppers}>
-            <Pressable
+            <Pressable accessibilityRole="button"
               hitSlop={10}
               style={styles.stepper}
               onPress={() => setLevel(Math.max(1, level - 25))}
@@ -51,7 +64,7 @@ export default function Home() {
             >
               <Text style={styles.stepperText}>–25</Text>
             </Pressable>
-            <Pressable
+            <Pressable accessibilityRole="button"
               hitSlop={10}
               style={styles.stepper}
               onPress={() => setLevel(level + 25)}
@@ -64,7 +77,7 @@ export default function Home() {
 
         {/* Today + Zen */}
         <View style={styles.rowPair}>
-          <Pressable
+          <Pressable accessibilityRole="button"
             style={[styles.card, styles.cardHalf]}
             onPress={() => router.push({ pathname: "/play", params: { mode: "today" } })}
           >
@@ -73,7 +86,7 @@ export default function Home() {
               {todayDone ? "solved ✓" : "a gradient for everyone"}
             </Text>
           </Pressable>
-          <Pressable style={[styles.card, styles.cardHalf]} onPress={() => router.push("/zen")}>
+          <Pressable accessibilityRole="button" style={[styles.card, styles.cardHalf]} onPress={() => router.push("/zen")}>
             <Text style={styles.cardKicker}>zen</Text>
             <Text style={styles.cardTitleSmall}>free play</Text>
           </Pressable>
@@ -81,21 +94,21 @@ export default function Home() {
 
         {/* Secondary */}
         <View style={styles.links}>
-          <Pressable onPress={() => router.push("/gallery")}>
+          <Pressable accessibilityRole="button" onPress={() => router.push("/gallery")}>
             <Text style={styles.link}>gallery</Text>
           </Pressable>
           <Text style={styles.linkDot}>·</Text>
-          <Pressable onPress={() => router.push("/stats")}>
+          <Pressable accessibilityRole="button" onPress={() => router.push("/stats")}>
             <Text style={styles.link}>stats</Text>
           </Pressable>
           <Text style={styles.linkDot}>·</Text>
-          <Pressable onPress={() => router.push("/settings")}>
+          <Pressable accessibilityRole="button" onPress={() => router.push("/settings")}>
             <Text style={styles.link}>settings</Text>
           </Pressable>
           {Platform.OS === "web" && (
             <>
               <Text style={styles.linkDot}>·</Text>
-              <Pressable onPress={() => router.push("/studio")}>
+              <Pressable accessibilityRole="button" onPress={() => router.push("/studio")}>
                 <Text style={styles.link}>studio</Text>
               </Pressable>
             </>
@@ -161,6 +174,7 @@ const styles = StyleSheet.create({
   cardHalf: { flex: 1 },
   cardKicker: { ...typeScale.small, ...trackedUpper, color: palette.accent },
   cardTitle: { ...typeScale.heading, color: palette.text, marginTop: 2 },
+  cardMeta: { ...typeScale.small, color: palette.textFaint, marginTop: 2 },
   cardTitleSmall: { ...typeScale.body, color: palette.textDim, marginTop: 2 },
   rowPair: { flexDirection: "row", gap: spacing.md },
   steppers: { flexDirection: "row", gap: spacing.sm },
