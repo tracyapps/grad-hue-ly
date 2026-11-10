@@ -53,6 +53,8 @@ export interface ProfileState {
   today: Record<string, { solved: boolean; moves: number }>;
   gallery: GalleryItem[];
   settings: Settings;
+  /** False until the first-launch teach puzzle is solved or skipped. */
+  onboarded: boolean;
 
   recordSolve: (input: {
     kind: "level" | "today" | "zen";
@@ -65,6 +67,7 @@ export interface ProfileState {
   /** Zen has no "progress"; every solve just advances the seed stream. */
   nextZenNonce: () => number;
   setLevel: (level: number) => void;
+  setOnboarded: () => void;
   updateSettings: (patch: Partial<Settings>) => void;
 }
 
@@ -88,6 +91,7 @@ export const useProfile = create<ProfileState>()(
       today: {},
       gallery: [],
       settings: { sound: true, haptics: true, reduceMotion: false },
+      onboarded: false,
 
       recordSolve: ({ kind, level, size, subtlety, moves }) => {
         const state = get();
@@ -141,6 +145,8 @@ export const useProfile = create<ProfileState>()(
       },
 
       setLevel: (level) => set({ level: Math.max(1, level) }),
+
+      setOnboarded: () => set({ onboarded: true }),
 
       updateSettings: (patch) => set({ settings: { ...get().settings, ...patch } }),
     }),

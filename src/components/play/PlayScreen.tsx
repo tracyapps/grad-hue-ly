@@ -21,6 +21,7 @@ import {
 } from "@/engine";
 import { useProfile } from "@/state/profile";
 import { hapticDrop, hapticSolve } from "@/lib/haptics";
+import { playSound } from "@/lib/sound";
 import { palette, spacing, type as typeScale, trackedUpper } from "@/theme";
 
 export type PlayKind = "level" | "today" | "zen";
@@ -86,10 +87,12 @@ export default function PlayScreen({
       setMoves((m) => m + 1);
       setHintVisible(false);
       hapticDrop();
+      playSound("drop");
       if (isSolved(next)) {
         setCelebrateOrigin(to);
         setPhase("solved");
         hapticSolve();
+        playSound("solve");
         if (!recorded.current) {
           recorded.current = true;
           recordSolve({

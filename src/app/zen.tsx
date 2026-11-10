@@ -2,6 +2,7 @@ import { useState } from "react";
 import { Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
+import GradientBackdrop from "@/components/GradientBackdrop";
 import { useProfile } from "@/state/profile";
 import type { ZenSize, ZenSubtlety } from "@/engine";
 import { palette, radius, spacing, type as typeScale, trackedUpper } from "@/theme";
@@ -33,7 +34,9 @@ export default function Zen() {
   };
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top"]}>
+    <View style={{ flex: 1 }}>
+      <GradientBackdrop />
+      <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.content}>
         <Pressable hitSlop={12} onPress={() => router.back()} style={styles.back}>
           <Text style={styles.backIcon}>‹</Text>
@@ -78,6 +81,7 @@ export default function Zen() {
         </Pressable>
       </View>
     </SafeAreaView>
+    </View>
   );
 }
 

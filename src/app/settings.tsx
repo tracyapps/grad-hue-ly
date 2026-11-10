@@ -1,6 +1,7 @@
 import { Pressable, StyleSheet, Switch, Text, View } from "react-native";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
+import GradientBackdrop from "@/components/GradientBackdrop";
 import { useProfile } from "@/state/profile";
 import { font, palette, radius, spacing, type as typeScale, trackedUpper } from "@/theme";
 
@@ -36,7 +37,9 @@ export default function Settings() {
   const updateSettings = useProfile((s) => s.updateSettings);
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top"]}>
+    <View style={{ flex: 1 }}>
+      <GradientBackdrop />
+      <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.header}>
         <Pressable hitSlop={12} onPress={() => router.back()} style={styles.back}>
           <Text style={styles.backIcon}>‹</Text>
@@ -81,6 +84,7 @@ export default function Settings() {
         <Text style={styles.footer}>grad[hue]ly · v0.1</Text>
       </View>
     </SafeAreaView>
+    </View>
   );
 }
 

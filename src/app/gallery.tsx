@@ -4,6 +4,7 @@ import { FlatList } from "react-native";
 import { LinearGradient } from "expo-linear-gradient";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
+import GradientBackdrop from "@/components/GradientBackdrop";
 import { galleryParams, useProfile, type GalleryItem } from "@/state/profile";
 import { palette, radius, spacing, type as typeScale, trackedUpper } from "@/theme";
 
@@ -51,7 +52,9 @@ export default function Gallery() {
   );
 
   return (
-    <SafeAreaView style={styles.safe} edges={["top"]}>
+    <View style={{ flex: 1 }}>
+      <GradientBackdrop />
+      <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.header}>
         <Pressable hitSlop={12} onPress={() => router.back()} style={styles.back}>
           <Text style={styles.backIcon}>‹</Text>
@@ -80,6 +83,7 @@ export default function Gallery() {
         renderItem={({ item }) => <GradientCard item={item} worldSeed={worldSeed} />}
       />
     </SafeAreaView>
+    </View>
   );
 }
 

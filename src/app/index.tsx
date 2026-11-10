@@ -3,19 +3,28 @@ import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { chapterName } from "@/engine";
 import { useProfile } from "@/state/profile";
+import GradientBackdrop from "@/components/GradientBackdrop";
+import Onboarding from "@/components/play/Onboarding";
 import { font, palette, radius, spacing, type as typeScale, trackedUpper } from "@/theme";
 
 export default function Home() {
   const level = useProfile((s) => s.level);
   const setLevel = useProfile((s) => s.setLevel);
+  const onboarded = useProfile((s) => s.onboarded);
+  const setOnboarded = useProfile((s) => s.setOnboarded);
+  const reduceMotion = useProfile((s) => s.settings.reduceMotion);
   const todayKey = new Date().toISOString().slice(0, 10);
   const todayDone = useProfile((s) => s.today[todayKey]?.solved ?? false);
 
   const openLevel = (n: number) =>
     router.push({ pathname: "/play", params: { mode: "level", n: String(n) } });
 
+  if (!onboarded) return <Onboarding onDone={setOnboarded} />;
+
   return (
-    <SafeAreaView style={styles.safe} edges={["top"]}>
+    <View style={styles.root}>
+      <GradientBackdrop reduceMotion={reduceMotion} />
+      <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content}>
         {/* Wordmark */}
         <View style={styles.wordmarkRow}>
@@ -85,12 +94,14 @@ export default function Home() {
           </Pressable>
         </View>
       </ScrollView>
-    </SafeAreaView>
+      </SafeAreaView>
+    </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: palette.bgMenu },
+  root: { flex: 1 },
+  safe: { flex: 1 },
   content: {
     flexGrow: 1,
     justifyContent: "center",

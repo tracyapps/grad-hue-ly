@@ -18,6 +18,7 @@ import Animated, {
 } from "react-native-reanimated";
 import { palette, tileSpring } from "@/theme";
 import { hapticPickup } from "@/lib/haptics";
+import { playSound } from "@/lib/sound";
 
 export type BoardPhase = "revealing" | "playing" | "solved";
 
@@ -169,6 +170,7 @@ export default function Board({
   const beginGhost = useCallback((cell: number, tile: number) => {
     setGhost({ cell, tile });
     hapticPickup();
+    playSound("tick");
   }, []);
   const endGhost = useCallback(() => setGhost(null), []);
 
