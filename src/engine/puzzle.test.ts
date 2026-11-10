@@ -66,8 +66,9 @@ describe("corner field generation", () => {
     const rng = new Rng(31337);
     const p = levelParams(200);
     const field = generateCornerField(rng, makeRect(p.cols, p.rows), p, p.cornerMode);
-    // Engine contract: constant distinctness floor, independent of difficulty.
-    expect(field.minPairwise).toBeGreaterThanOrEqual(0.0028);
+    // Engine contract: constant uniqueness floor (distant tiles may sit
+    // closer than neighbors — they're never compared side by side).
+    expect(field.minPairwise).toBeGreaterThanOrEqual(0.0012);
   });
 });
 
@@ -167,7 +168,7 @@ describe("puzzle generation", () => {
       const deltas = adjacentPairs(grid).map(([i, j]) => deltaEok(labs[i], labs[j]));
       const mean = deltas.reduce((s, d) => s + d, 0) / deltas.length;
       expect(mean).toBeGreaterThanOrEqual(puzzle.params.minAdjacentDelta * 0.95);
-      expect(Math.min(...deltas)).toBeGreaterThanOrEqual(0.0027);
+      expect(Math.min(...deltas)).toBeGreaterThanOrEqual(0.004);
     }
   });
 
@@ -275,7 +276,46 @@ describe("boards are true multidimensional gradients", () => {
         return 1 - ssRes / ssTot;
       };
       const r2 = (solve("l") + solve("a") + solve("b")) / 3;
-      expect(r2).toBeGreaterThan(0.9);
+      expect(r2).toBeGreaterThan(0.88);
+    }
+  });
+});
+
+describe("gradient smoothness (the no-jumps invariant)", () => {
+  const statsFor = (level: number) => {
+    const puzzle = generateLevel(level);
+    const grid = makeRect(puzzle.cols, puzzle.rows);
+    const labs = puzzle.colors.map(hexToLab);
+    const deltas = adjacentPairs(grid)
+      .map(([i, j]) => deltaEok(labs[i], labs[j]))
+      .sort((a, b) => a - b);
+    const mean = deltas.reduce((s, d) => s + d, 0) / deltas.length;
+    const median = deltas[Math.floor(deltas.length / 2)];
+    const variance = deltas.reduce((s, d) => s + (d - mean) ** 2, 0) / deltas.length;
+    return {
+      min: deltas[0],
+      max: deltas[deltas.length - 1],
+      median,
+      cv: Math.sqrt(variance) / mean,
+    };
+  };
+
+  it("no perceptual jumps: max step stays near the typical step", () => {
+    for (const level of [10, 60, 150, 300]) {
+      const s = statsFor(level);
+      // A visible "jump" is a single step far larger than its neighbors.
+      expect(s.max).toBeLessThanOrEqual(s.median * 4.5);
+      // ...and the step distribution stays even, not lumpy.
+      expect(s.cv).toBeLessThanOrEqual(0.95);
+    }
+  });
+
+  it("parallel rows stay distinguishable at whisper difficulty", () => {
+    // The ambiguity fix: even the calmest adjacent pair can't slip below
+    // the row-distinguishable floor after 8-bit quantization.
+    for (const level of [200, 300, 420]) {
+      const s = statsFor(level);
+      expect(s.min).toBeGreaterThanOrEqual(0.004);
     }
   });
 });

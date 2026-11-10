@@ -15,6 +15,7 @@ export { makeRect, adjacentPairs, neighborIndices, type GridSpec, type Cell } fr
 export {
   generateCornerField,
   ensureDistinct,
+  smoothField,
   bilinearSample,
   FieldTuneError,
   type FieldParams,

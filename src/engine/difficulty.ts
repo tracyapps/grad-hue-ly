@@ -100,11 +100,12 @@ export function levelParams(level: number): PuzzleParams {
   const hueSpan = 0.12 + 0.3 * (0.5 + 0.5 * Math.sin(level * 0.05));
 
   // Perceptual difficulty: mean ΔEok between adjacent tiles. 0.042 reads as
-  // an obvious teaching gradient; 0.0085 is a genuine whisper.
+  // an obvious teaching gradient; 0.0095 is a genuine whisper — but never so
+  // tight that parallel rows become indistinguishable.
   let minAdjacentDelta =
-    lerp(0.042, 0.0085, prog) * (1 + 0.12 * Math.sin(level * 0.37));
+    lerp(0.042, 0.0095, prog) * (1 + 0.12 * Math.sin(level * 0.37));
   if (breather) minAdjacentDelta *= 1.5;
-  minAdjacentDelta = clamp(minAdjacentDelta, 0.0075, 0.05);
+  minAdjacentDelta = clamp(minAdjacentDelta, 0.009, 0.05);
 
   // Every fifth chapter is a "jewel" chapter: darker, richer colors.
   const jewel = chapterOf(level) % 5 === 4;

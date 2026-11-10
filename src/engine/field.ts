@@ -19,7 +19,7 @@
 
 import { Lab, lchToLab, fitToGamut, deltaEok } from "./color";
 import { Rng } from "./rng";
-import { GridSpec, adjacentPairs } from "./grid";
+import { GridSpec, adjacentPairs, neighborIndices } from "./grid";
 
 export interface FieldParams {
   /** Hue arc between the two flow endpoints, in turns. */
@@ -97,7 +97,12 @@ function minPairwise(labs: Lab[]): number {
   return min;
 }
 
-/** Scale the field away/toward its mean color, staying in gamut. */
+/**
+ * Scale the field away/toward its mean color. Deliberately does NOT clamp to
+ * gamut per iteration — repeated partial clamping is what creates kinks.
+ * A single gamut fit happens once, after tuning, and the smoothing pass
+ * afterward evens out any step that fit leaves behind.
+ */
 function scaleAroundMean(labs: Lab[], f: number): Lab[] {
   let ml = 0;
   let ma = 0;
@@ -111,21 +116,20 @@ function scaleAroundMean(labs: Lab[], f: number): Lab[] {
   ml /= n;
   ma /= n;
   mb /= n;
-  return labs.map((c) =>
-    fitToGamut({
-      l: clamp(ml + (c.l - ml) * f, 0.1, 0.96),
-      a: ma + (c.a - ma) * f,
-      b: mb + (c.b - mb) * f,
-    }),
-  );
+  return labs.map((c) => ({
+    l: clamp(ml + (c.l - ml) * f, 0.08, 0.97),
+    a: ma + (c.a - ma) * f,
+    b: mb + (c.b - mb) * f,
+  }));
 }
 
 /**
  * Push two nearly-coincident colors apart in the a/b plane, along their
- * existing difference (or a fixed direction when degenerate). Individual
- * nudges are capped so they stay far below visual noise.
+ * existing difference (or a fixed direction when degenerate). Caps keep
+ * nudges sub-perceptual — they exist only as a last-resort repair, never as
+ * the primary tool (that's what the smooth ramp + blur are for).
  */
-function pushApart(x: Lab, y: Lab, need: number): void {
+function pushApart(x: Lab, y: Lab, need: number, cap: number): void {
   let da = x.a - y.a;
   let db = x.b - y.b;
   if (Math.hypot(da, db) < 1e-6) {
@@ -133,7 +137,7 @@ function pushApart(x: Lab, y: Lab, need: number): void {
     db = 0.5;
   }
   const m = Math.hypot(da, db);
-  const s = Math.min(need, 0.004) / m / 2;
+  const s = Math.min(need, cap) / m / 2;
   x.a += da * s;
   x.b += db * s;
   y.a -= da * s;
@@ -141,17 +145,79 @@ function pushApart(x: Lab, y: Lab, need: number): void {
 }
 
 /**
- * Guarantee distinctness. Smooth fields inevitably contain local extrema
- * where the gradient crosses zero, leaving adjacent pairs nearly identical —
- * global scaling can't fix a local property, so we repair locally with
- * sub-perceptual nudges (≤0.004 ΔE per pass, chroma plane only).
+ * Laplacian smoothing: pull every cell toward the average of its 4
+ * neighbors. This is the kink killer — it evens out steps introduced by
+ * gamut clamping, distinctness repairs, and 8-bit quantization while
+ * preserving the board's large-scale corner-driven structure.
+ */
+export function smoothField(
+  labs: Lab[],
+  grid: GridSpec,
+  iterations = 2,
+  alpha = 0.3,
+): Lab[] {
+  let cur = labs;
+  for (let iter = 0; iter < iterations; iter++) {
+    const next = cur.map((c) => ({ ...c }));
+    for (let i = 0; i < cur.length; i++) {
+      const ns = neighborIndices(grid, i);
+      if (ns.length === 0) continue;
+      let l = 0;
+      let a = 0;
+      let b = 0;
+      for (const j of ns) {
+        l += cur[j].l;
+        a += cur[j].a;
+        b += cur[j].b;
+      }
+      l /= ns.length;
+      a /= ns.length;
+      b /= ns.length;
+      next[i] = {
+        l: cur[i].l * (1 - alpha) + l * alpha,
+        a: cur[i].a * (1 - alpha) + a * alpha,
+        b: cur[i].b * (1 - alpha) + b * alpha,
+      };
+    }
+    cur = next;
+  }
+  return cur;
+}
+
+/**
+ * A whisper-thin linear ramp in the a/b plane. Perfectly smooth by
+ * construction, it gives every iso-line a gentle drift so no two cells ever
+ * tie — replacing what pair-nudges used to do, without ever creating a step.
+ */
+function applyMicroRamp(labs: Lab[], grid: GridSpec, rng: Rng, perStep = 0.0007): Lab[] {
+  const angle = rng.range(0, Math.PI * 2);
+  const rx = Math.cos(angle) * perStep;
+  const ry = Math.sin(angle) * perStep;
+  // Ramp lives in the a/b plane split across the two channels.
+  const ax = rx * 0.7;
+  const bx = rx * 0.7;
+  const ay = ry * 0.7;
+  const by = -ry * 0.7;
+  return labs.map((c, i) => {
+    const { x, y } = grid.cells[i];
+    return {
+      l: c.l,
+      a: c.a + ax * x + ay * y,
+      b: c.b + bx * x + by * y,
+    };
+  });
+}
+
+/**
+ * Guarantee distinctness with a light touch: floors keep parallel rows
+ * distinguishable and every tile unique; caps keep repairs invisible.
  * Exported because the Studio's image-sampled boards need the same promise.
  */
 export function ensureDistinct(
   labs: Lab[],
   grid: GridSpec,
-  adjacentGap = 0.0042,
-  uniqueGap = 0.003,
+  adjacentGap = 0.005,
+  uniqueGap = 0.0015,
 ): Lab[] {
   const out = labs.map((c) => ({ ...c }));
 
@@ -160,7 +226,7 @@ export function ensureDistinct(
     for (const [i, j] of adjacentPairs(grid)) {
       const d = deltaEok(out[i], out[j]);
       if (d < adjacentGap) {
-        pushApart(out[i], out[j], (adjacentGap - d) / 2 + 0.0004);
+        pushApart(out[i], out[j], (adjacentGap - d) / 2 + 0.0002, 0.0012);
         touched = true;
       }
     }
@@ -173,7 +239,7 @@ export function ensureDistinct(
       for (let j = i + 1; j < out.length; j++) {
         const d = deltaEok(out[i], out[j]);
         if (d < uniqueGap) {
-          pushApart(out[i], out[j], (uniqueGap - d) / 2 + 0.0002);
+          pushApart(out[i], out[j], (uniqueGap - d) / 2 + 0.0001, 0.0012);
           touched = true;
         }
       }
@@ -181,7 +247,7 @@ export function ensureDistinct(
     if (!touched) break;
   }
 
-  return out.map(fitToGamut);
+  return out;
 }
 
 function sampleCornerColors(rng: Rng, p: FieldParams, mode: CornerMode): [Lab, Lab, Lab, Lab] {
@@ -253,50 +319,55 @@ export function generateCornerField(
 ): GeneratedField {
   const corners = sampleCornerColors(rng, p, mode);
 
-  const labs: Lab[] = grid.cells.map(({ x, y }) => {
+  const raw: Lab[] = grid.cells.map(({ x, y }) => {
     const u = grid.cols === 1 ? 0.5 : x / (grid.cols - 1);
     const v = grid.rows === 1 ? 0.5 : y / (grid.rows - 1);
     return bilinearSample(corners, u, v);
   });
 
-  // Tune the MEAN adjacent delta into [floor, cap] by scaling around the mean.
   const pairs = adjacentPairs(grid);
   const floor = p.minAdjacentDelta;
   const cap = p.maxAdjacentDelta;
 
-  let best = labs;
-  let bestScore = Infinity;
-  let cur = labs;
-  for (let iter = 0; iter < 16; iter++) {
+  // The smoothness pipeline — one clean gamut fit → a whisper ramp that
+  // unties iso-lines → Laplacian blur that erases every kink. Blur is linear,
+  // so it commutes with scaling: build the smooth SHAPE first, then tune the
+  // post-smooth field directly into the difficulty band. Tuning before the
+  // blur would let the blur drag the contrast back below the floor.
+  const shape = smoothField(
+    applyMicroRamp(raw.map(fitToGamut), grid, rng),
+    grid,
+    2,
+    0.3,
+  );
+
+  let cur = shape;
+  for (let iter = 0; iter < 12; iter++) {
     const { mean } = adjacentStats(cur, pairs);
-    const score = Math.max(0, floor - mean) * 6 + Math.max(0, mean - cap);
-    if (score < bestScore) {
-      bestScore = score;
-      best = cur;
-    }
-    if (score === 0) break;
-    const expand = Math.max(0, floor - mean) * 6 > Math.max(0, mean - cap);
-    cur = scaleAroundMean(cur, expand ? 1.12 : 0.9);
+    if (mean >= floor * 0.99 && mean <= cap) break;
+    const ratio = mean < floor ? (floor * 1.02) / mean : cap / Math.max(mean, 1e-9);
+    cur = scaleAroundMean(cur, Math.max(0.8, Math.min(1.25, ratio)));
   }
 
-  const tuned = adjacentStats(best, pairs);
+  const tuned = adjacentStats(cur, pairs);
   if (tuned.mean < floor * 0.97) {
     throw new FieldTuneError(
       `could not raise mean adjacent contrast above ${floor.toFixed(4)} (got ${tuned.mean.toFixed(4)})`,
     );
   }
 
-  // Local repair: every adjacent pair clearly distinct, every tile unique.
+  // Light-touch distinctness floors keep parallel rows distinguishable and
+  // every tile unique; caps keep any repair invisible.
   const resolved = ensureDistinct(
-    best,
+    cur,
     grid,
-    Math.max(0.0042, floor * 0.1),
-    Math.max(0.003, floor * 0.06),
+    Math.max(0.005, floor * 0.28),
+    0.0015,
   );
 
   const stats = adjacentStats(resolved, pairs);
   const minPair = minPairwise(resolved);
-  if (stats.min < 0.0038 || minPair < 0.0028) {
+  if (stats.min < 0.0042 || minPair < 0.0012) {
     throw new FieldTuneError("distinctness repair failed");
   }
 
