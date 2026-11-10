@@ -1,11 +1,11 @@
 {
   "expo": {
-    "name": "tmp-scaffold",
-    "slug": "tmp-scaffold",
+    "name": "gradhuely",
+    "slug": "gradhuely",
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/images/icon.png",
-    "scheme": "tmpscaffold",
+    "scheme": "gradhuely",
     "userInterfaceStyle": "automatic",
     "ios": {
       "icon": "./assets/expo.icon"
