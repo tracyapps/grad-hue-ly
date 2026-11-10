@@ -28,7 +28,7 @@ export default function Stats() {
       <GradientBackdrop />
       <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.header}>
-        <Pressable hitSlop={12} onPress={() => router.back()} style={styles.back}>
+        <Pressable accessibilityRole="button" hitSlop={12} accessibilityLabel="Back" onPress={() => router.back()} style={styles.back}>
           <Text style={styles.backIcon}>‹</Text>
         </Pressable>
         <Text style={styles.title}>stats</Text>

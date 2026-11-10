@@ -2,35 +2,46 @@
 export { hashSeed, Rng } from "./rng";
 export {
   deltaEok,
+  deltaP,
   labToHex,
   hexToLab,
   lchToLab,
   labToLch,
   fitToGamut,
+  inGamut,
   type Lab,
   type Lch,
   type Rgb,
 } from "./color";
 export { makeRect, adjacentPairs, neighborIndices, type GridSpec, type Cell } from "./grid";
 export {
-  generateCornerField,
-  ensureDistinct,
-  smoothField,
+  generateField,
+  bilinearField,
   bilinearSample,
-  FieldTuneError,
-  type FieldParams,
+  resampleField,
+  fieldQuality,
+  meanChroma,
+  type FieldSpec,
+  type FieldQuality,
   type GeneratedField,
-  type CornerMode,
 } from "./field";
 export { shuffledPlacement } from "./shuffle";
-export { finalizeColors } from "./quantize";
+export { quantizeField } from "./quantize";
+export { CHAPTER_MOODS, OPEN_MOOD, type Mood } from "./palettes";
 export {
   levelParams,
   zenParams,
   todayParams,
   chapterOf,
   chapterName,
+  chapterMood,
   CHAPTER_SIZE,
+  SIZE_LADDER,
+  MIN_STEP,
+  MAX_SPAN,
+  maxStepFor,
+  ZEN_SIZES,
+  ZEN_STEP,
   type PuzzleParams,
   type ZenOptions,
   type ZenSize,
@@ -41,12 +52,12 @@ export {
   generateLevel,
   generateToday,
   generateZen,
+  puzzleFromField,
   puzzleFromColors,
   isSolved,
   applySwap,
   applyCornerLocks,
   cornerCells,
-  resampleColors,
   levelSeed,
   todaySeed,
   zenSeed,

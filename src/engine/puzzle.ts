@@ -12,12 +12,11 @@
  */
 
 import { Rng, hashSeed } from "./rng";
-import { makeRect } from "./grid";
-import { generateCornerField, ensureDistinct, smoothField, FieldTuneError } from "./field";
+import { generateField } from "./field";
 import { PuzzleParams, zenParams, levelParams, todayParams, ZenOptions } from "./difficulty";
 import { Lab, hexToLab } from "./color";
 import { shuffledPlacement } from "./shuffle";
-import { finalizeColors } from "./quantize";
+import { quantizeField } from "./quantize";
 
 export interface Puzzle {
   cols: number;
@@ -67,76 +66,55 @@ export function applyCornerLocks(placement: number[], cols: number, rows: number
 }
 
 export function generatePuzzle(params: PuzzleParams, seed: number): Puzzle {
-  const grid = makeRect(params.cols, params.rows);
   const rng = new Rng(seed);
-
-  // Field generation retries with a slightly relaxed contrast floor; retries
-  // consume the same rng stream, so the whole search stays deterministic.
-  let labs: Lab[] | null = null;
-  let used = params;
-  for (let attempt = 0; attempt < 8; attempt++) {
-    const p: PuzzleParams =
-      attempt === 0
-        ? params
-        : {
-            ...params,
-            minAdjacentDelta: params.minAdjacentDelta * Math.pow(0.93, attempt),
-          };
-    try {
-      labs = generateCornerField(rng, grid, p, p.cornerMode).labs;
-      used = p;
-      break;
-    } catch (e) {
-      if (!(e instanceof FieldTuneError)) throw e;
-    }
-  }
-  if (!labs) {
-    throw new Error(`field generation failed for seed ${seed}`);
-  }
-
-  const colors = finalizeColors(labs, grid, { meanFloor: used.minAdjacentDelta });
-  const placement = shuffledPlacement(rng, grid.cells.length, new Set());
-
-  return { cols: params.cols, rows: params.rows, colors, placement, params: used, seed };
+  const field = generateField(rng, {
+    cols: params.cols,
+    rows: params.rows,
+    step: params.step,
+    twist: params.twist,
+    mood: params.mood,
+  });
+  const colors = quantizeField(field.labs, params.cols, params.rows);
+  const placement = shuffledPlacement(rng, colors.length, new Set());
+  return { cols: params.cols, rows: params.rows, colors, placement, params, seed };
 }
 
 /**
- * Build a puzzle from an explicit solved color set (the Studio's image- and
- * corner-crafted boards). Colors are repaired for distinctness so the board
- * is always unambiguously solvable.
+ * Build a puzzle from an explicit solved OKLab field (Studio boards: corner
+ * blends and resampled images). The field is quantized faithfully — no
+ * smoothing, no nudging — so what you designed is what you play.
  */
+export function puzzleFromField(
+  labs: Lab[],
+  cols: number,
+  rows: number,
+  seed: number,
+  revealMs = 3200,
+): Puzzle {
+  if (labs.length !== cols * rows) {
+    throw new Error(`expected ${cols * rows} colors, got ${labs.length}`);
+  }
+  const colors = quantizeField(labs, cols, rows);
+  const rng = new Rng(seed);
+  const placement = shuffledPlacement(rng, colors.length, new Set());
+  return {
+    cols,
+    rows,
+    colors,
+    placement,
+    params: { ...zenParams({ size: "medium" }), cols, rows, revealMs },
+    seed,
+  };
+}
+
+/** Convenience: a puzzle from solved hex colors. */
 export function puzzleFromColors(
   colors: string[],
   cols: number,
   rows: number,
   seed: number,
 ): Puzzle {
-  if (colors.length !== cols * rows) {
-    throw new Error(`expected ${cols * rows} colors, got ${colors.length}`);
-  }
-  const grid = makeRect(cols, rows);
-  // A light smoothing before finalization so image sampling noise and JPEG
-  // artifacts never become visible steps; artwork contrast is preserved.
-  const smoothed = smoothField(colors.map(hexToLab), grid, 1, 0.2);
-  const distinct = ensureDistinct(smoothed, grid);
-  const fixed = finalizeColors(distinct, grid, { adjacentFloor: 0.0055 });
-  const rng = new Rng(seed);
-  const placement = shuffledPlacement(rng, fixed.length, new Set());
-  const mode = colors.length > 60 ? "quad" : "diagonal";
-  return {
-    cols,
-    rows,
-    colors: fixed,
-    placement,
-    params: {
-      ...zenParams({ size: "medium" }),
-      cols,
-      rows,
-      cornerMode: mode,
-      revealMs: 3200,
-    },
-    seed,
-  };
+  return puzzleFromField(colors.map(hexToLab), cols, rows, seed);
 }
 
 export function generateLevel(level: number, worldSeed: number = DEFAULT_WORLD_SEED): Puzzle {
@@ -158,37 +136,6 @@ export function generateZen(
 export function isSolved(placement: number[]): boolean {
   for (let i = 0; i < placement.length; i++) if (placement[i] !== i) return false;
   return true;
-}
-
-/**
- * Nearest-neighbor resample of a solved color grid at a new size — how the
- * Studio serves one canonical gradient at every difficulty.
- */
-export function resampleColors(
-  colors: string[],
-  fromCols: number,
-  fromRows: number,
-  toCols: number,
-  toRows: number,
-): string[] {
-  if (colors.length !== fromCols * fromRows) {
-    throw new Error(`expected ${fromCols * fromRows} colors, got ${colors.length}`);
-  }
-  const out: string[] = [];
-  for (let y = 0; y < toRows; y++) {
-    const sy = Math.min(
-      fromRows - 1,
-      Math.round((y / Math.max(1, toRows - 1)) * (fromRows - 1)),
-    );
-    for (let x = 0; x < toCols; x++) {
-      const sx = Math.min(
-        fromCols - 1,
-        Math.round((x / Math.max(1, toCols - 1)) * (fromCols - 1)),
-      );
-      out.push(colors[sy * fromCols + sx]);
-    }
-  }
-  return out;
 }
 
 /** Pure swap of the tiles at two cells. */

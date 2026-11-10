@@ -38,7 +38,7 @@ export default function Zen() {
       <GradientBackdrop />
       <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.content}>
-        <Pressable hitSlop={12} onPress={() => router.back()} style={styles.back}>
+        <Pressable accessibilityRole="button" hitSlop={12} accessibilityLabel="Back" onPress={() => router.back()} style={styles.back}>
           <Text style={styles.backIcon}>‹</Text>
         </Pressable>
         <Text style={styles.title}>zen</Text>
@@ -47,7 +47,7 @@ export default function Zen() {
         <Text style={styles.sectionLabel}>board</Text>
         <View style={styles.grid}>
           {SIZES.map((s) => (
-            <Pressable
+            <Pressable accessibilityRole="button"
               key={s.id}
               style={[styles.choice, size === s.id && styles.choiceActive]}
               onPress={() => setSize(s.id)}
@@ -63,7 +63,7 @@ export default function Zen() {
         <Text style={styles.sectionLabel}>subtlety</Text>
         <View style={styles.grid}>
           {SUBTLETIES.map((s) => (
-            <Pressable
+            <Pressable accessibilityRole="button"
               key={s.id}
               style={[styles.choice, subtlety === s.id && styles.choiceActive]}
               onPress={() => setSubtlety(s.id)}
@@ -76,7 +76,7 @@ export default function Zen() {
           ))}
         </View>
 
-        <Pressable style={styles.begin} onPress={begin}>
+        <Pressable accessibilityRole="button" style={styles.begin} onPress={begin}>
           <Text style={styles.beginText}>begin</Text>
         </Pressable>
       </View>

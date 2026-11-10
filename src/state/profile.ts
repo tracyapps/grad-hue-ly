@@ -71,6 +71,8 @@ export interface ProfileState {
     subtlety?: ZenSubtlety;
     studioId?: string;
     grid?: string;
+    /** Zen: the nonce the board was generated from (keys the gallery entry). */
+    zenNonce?: number;
     moves: number;
   }) => void;
   /** Zen has no "progress"; every solve just advances the seed stream. */
@@ -108,7 +110,7 @@ export const useProfile = create<ProfileState>()(
       },
       onboarded: false,
 
-      recordSolve: ({ kind, level, size, subtlety, studioId, grid, moves }) => {
+      recordSolve: ({ kind, level, size, subtlety, studioId, grid, zenNonce, moves }) => {
         const state = get();
         const dateISO = kind === "today" ? todayISO() : undefined;
         const key =
@@ -118,7 +120,7 @@ export const useProfile = create<ProfileState>()(
               ? `today:${dateISO}`
               : kind === "studio"
                 ? `studio:${studioId}:${grid}`
-                : `zen:${state.zenNonce}`;
+                : `zen:${zenNonce ?? state.zenNonce}`;
 
         const patch: Partial<ProfileState> = {
           solvedCount: state.solvedCount + 1,
@@ -138,7 +140,11 @@ export const useProfile = create<ProfileState>()(
           }
         }
 
-        if (kind === "zen") patch.zenNonce = state.zenNonce + 1;
+        // Zen nonces advance when a board is STARTED (nextZenNonce); a solve
+        // only makes sure the counter has moved past this board's nonce.
+        if (kind === "zen" && zenNonce !== undefined && zenNonce >= state.zenNonce) {
+          patch.zenNonce = zenNonce + 1;
+        }
 
         const item: GalleryItem = {
           key,

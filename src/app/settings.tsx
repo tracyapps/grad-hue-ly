@@ -41,7 +41,7 @@ export default function Settings() {
       <GradientBackdrop />
       <SafeAreaView style={styles.safe} edges={["top"]}>
       <View style={styles.header}>
-        <Pressable hitSlop={12} onPress={() => router.back()} style={styles.back}>
+        <Pressable accessibilityRole="button" hitSlop={12} accessibilityLabel="Back" onPress={() => router.back()} style={styles.back}>
           <Text style={styles.backIcon}>‹</Text>
         </Pressable>
         <Text style={styles.title}>settings</Text>
@@ -97,7 +97,7 @@ export default function Settings() {
           <>
             <Text style={styles.sectionLabel}>studio</Text>
             <View style={styles.group}>
-              <Pressable
+              <Pressable accessibilityRole="button"
                 style={styles.studioRow}
                 onPress={() => router.push("/studio")}
                 accessibilityLabel="Open the gradient studio"

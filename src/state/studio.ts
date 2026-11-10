@@ -7,6 +7,7 @@
 import { create } from "zustand";
 import { createJSONStorage, persist } from "zustand/middleware";
 import AsyncStorage from "@react-native-async-storage/async-storage";
+import { bilinearField, hexToLab, resampleField, type Lab } from "@/engine";
 
 export const CANONICAL_COLS = 12;
 export const CANONICAL_ROWS = 18;
@@ -53,3 +54,16 @@ export const useStudio = create<StudioState>()(
     },
   ),
 );
+
+/**
+ * The solved field for a library gradient at any board size. Corner
+ * gradients are re-blended exactly at the requested size; image gradients
+ * are resampled smoothly (bicubic in OKLab) from the stored grid — never
+ * nearest-neighbor, which skipped source columns and caused visible jumps.
+ */
+export function gradientField(g: StudioGradient, cols: number, rows: number): Lab[] {
+  if (g.kind === "corners" && g.corners) {
+    return bilinearField(g.corners.map(hexToLab) as [Lab, Lab, Lab, Lab], cols, rows);
+  }
+  return resampleField(g.canonical.map(hexToLab), CANONICAL_COLS, CANONICAL_ROWS, cols, rows);
+}

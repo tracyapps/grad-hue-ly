@@ -12,13 +12,25 @@ import { useEffect, useMemo, useRef, useState } from "react";
 import { LayoutChangeEvent, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { createPortal } from "react-dom";
 import { router } from "expo-router";
-import { LinearGradient } from "expo-linear-gradient";
 import { SafeAreaView } from "react-native-safe-area-context";
 import GradientBackdrop from "@/components/GradientBackdrop";
-import { bilinearSample, hexToLab, labToHex, type Lab } from "@/engine";
+import {
+  bilinearField,
+  fieldQuality,
+  generateField,
+  hexToLab,
+  labToHex,
+  OPEN_MOOD,
+  quantizeField,
+  resampleField,
+  Rng,
+  type Lab,
+} from "@/engine";
+import MiniBoard from "@/components/MiniBoard";
 import {
   CANONICAL_COLS,
   CANONICAL_ROWS,
+  gradientField,
   useStudio,
   type StudioGradient,
 } from "@/state/studio";
@@ -38,26 +50,24 @@ const DEFAULT_CORNERS: [string, string, string, string] = [
   "#4E6FB8", // dusk blue, BR
 ];
 
+const toLabs4 = (hex: string[]) => hex.map(hexToLab) as [Lab, Lab, Lab, Lab];
+
 function cornersToCanonical(corners: string[]): string[] {
-  const labs = corners.map(hexToLab) as [Lab, Lab, Lab, Lab];
-  const out: string[] = [];
-  for (let y = 0; y < CANONICAL_ROWS; y++) {
-    for (let x = 0; x < CANONICAL_COLS; x++) {
-      const u = x / (CANONICAL_COLS - 1);
-      const v = y / (CANONICAL_ROWS - 1);
-      out.push(labToHex(bilinearSample(labs, u, v)));
-    }
-  }
-  return out;
+  return bilinearField(toLabs4(corners), CANONICAL_COLS, CANONICAL_ROWS).map(labToHex);
 }
 
+/**
+ * Sample an image into the canonical grid by AVERAGING each cell's area
+ * (in linear light), not by reading one pixel — a single pixel picks up
+ * JPEG blocks, dithering and noise, which used to show up as random steps.
+ */
 function sampleImage(file: File): Promise<string[]> {
   return new Promise((resolve, reject) => {
     const img = new Image();
     const url = URL.createObjectURL(file);
     img.onload = () => {
-      const W = Math.min(img.width, 1024);
-      const H = Math.round((img.height / img.width) * W);
+      const W = Math.min(img.width, 600);
+      const H = Math.max(1, Math.round((img.height / img.width) * W));
       const canvas = document.createElement("canvas");
       canvas.width = W;
       canvas.height = H;
@@ -69,14 +79,37 @@ function sampleImage(file: File): Promise<string[]> {
       }
       ctx.drawImage(img, 0, 0, W, H);
       const data = ctx.getImageData(0, 0, W, H).data;
-      const hex = (v: number) => v.toString(16).padStart(2, "0");
+      const lin = (v: number) => {
+        const c = v / 255;
+        return c <= 0.04045 ? c / 12.92 : Math.pow((c + 0.055) / 1.055, 2.4);
+      };
+      const enc = (c: number) => {
+        const v = c <= 0.0031308 ? 12.92 * c : 1.055 * Math.pow(c, 1 / 2.4) - 0.055;
+        return Math.round(Math.min(1, Math.max(0, v)) * 255)
+          .toString(16)
+          .padStart(2, "0");
+      };
       const out: string[] = [];
       for (let y = 0; y < CANONICAL_ROWS; y++) {
+        const y0 = Math.floor((y / CANONICAL_ROWS) * H);
+        const y1 = Math.max(y0 + 1, Math.floor(((y + 1) / CANONICAL_ROWS) * H));
         for (let x = 0; x < CANONICAL_COLS; x++) {
-          const px = Math.min(W - 1, Math.floor(((x + 0.5) / CANONICAL_COLS) * W));
-          const py = Math.min(H - 1, Math.floor(((y + 0.5) / CANONICAL_ROWS) * H));
-          const i = (py * W + px) * 4;
-          out.push(`#${hex(data[i])}${hex(data[i + 1])}${hex(data[i + 2])}`);
+          const x0 = Math.floor((x / CANONICAL_COLS) * W);
+          const x1 = Math.max(x0 + 1, Math.floor(((x + 1) / CANONICAL_COLS) * W));
+          let r = 0;
+          let g = 0;
+          let b = 0;
+          let n = 0;
+          for (let py = y0; py < y1; py++) {
+            for (let px = x0; px < x1; px++) {
+              const i = (py * W + px) * 4;
+              r += lin(data[i]);
+              g += lin(data[i + 1]);
+              b += lin(data[i + 2]);
+              n++;
+            }
+          }
+          out.push(`#${enc(r / n)}${enc(g / n)}${enc(b / n)}`);
         }
       }
       URL.revokeObjectURL(url);
@@ -88,6 +121,39 @@ function sampleImage(file: File): Promise<string[]> {
     };
     img.src = url;
   });
+}
+
+/** Four engine-quality corners: the generator's own taste, as a start. */
+function surpriseCorners(seed: number): string[] {
+  const f = generateField(new Rng(seed), {
+    cols: 7,
+    rows: 9,
+    step: 0.06,
+    twist: [0.3, 0.8],
+    mood: OPEN_MOOD,
+  });
+  return f.corners.map(labToHex);
+}
+
+type Readability = { label: string; note: string; ok: boolean };
+
+function readability(labs: Lab[], cols: number, rows: number): Readability {
+  const q = fieldQuality(labs, cols, rows);
+  if (q.twin < 0.6)
+    return {
+      label: "ambiguous",
+      note: "some tiles in different places look alike (often two corners are too similar) — try corners that differ more",
+      ok: false,
+    };
+  if (q.minStep < 0.02)
+    return {
+      label: "too faint",
+      note: "some neighbors are nearly identical on most screens — try a bigger contrast or a smaller grid",
+      ok: false,
+    };
+  if (q.meanStep >= 0.08) return { label: "clear", note: "an easy, relaxing board", ok: true };
+  if (q.meanStep >= 0.05) return { label: "gentle", note: "a comfortable challenge", ok: true };
+  return { label: "subtle", note: "a real whisper — expert territory", ok: true };
 }
 
 /**
@@ -136,6 +202,7 @@ function StudioForm({
         <input
           className="gh-name"
           type="text"
+          aria-label="Gradient name"
           placeholder="name this gradient"
           value={name}
           onChange={(e) => onName(e.target.value)}
@@ -147,6 +214,7 @@ function StudioForm({
               <label key={pos} className="gh-corner">
                 <input
                   type="color"
+                  aria-label={`${["top-left", "top-right", "bottom-left", "bottom-right"][i]} corner color`}
                   value={corners[i]}
                   onChange={(e) => onCorner(i, e.target.value)}
                 />
@@ -174,9 +242,10 @@ const ghCss = `
   background: #1F1B24; color: #ECE7E1; border: 1px solid #FFFFFF14; border-radius: 14px;
   padding: 12px 16px; font-size: 15px; font-family: Outfit, sans-serif; outline: none;
 }
-.gh-name:focus { border-color: #E08E6D88; }
+.gh-name:focus { border-color: #E08E6D; }
+.gh-studio-form :focus-visible { outline: 2px solid #E08E6D; outline-offset: 2px; }
 .gh-corners { display: flex; gap: 18px; justify-content: center; }
-.gh-corner { display: flex; flex-direction: column; align-items: center; gap: 6px; font: 500 11px Outfit, sans-serif; color: #6B6572; letter-spacing: 2px; }
+.gh-corner { display: flex; flex-direction: column; align-items: center; gap: 6px; font: 500 11px Outfit, sans-serif; color: #958E9C; letter-spacing: 2px; }
 .gh-corner input[type="color"] {
   width: 52px; height: 44px; border: none; border-radius: 10px; cursor: pointer; background: none; padding: 0;
 }
@@ -184,7 +253,7 @@ const ghCss = `
 .gh-corner input[type="color"]::-webkit-color-swatch { border: 1px solid #FFFFFF22; border-radius: 10px; }
 .gh-file { display: block; }
 .gh-file input[type="file"] { color: #ECE7E1; font-family: Outfit, sans-serif; font-size: 14px; }
-.gh-file span { display: block; color: #6B6572; font: 500 11px Outfit, sans-serif; margin-top: 6px; letter-spacing: 1px; }
+.gh-file span { display: block; color: #958E9C; font: 500 11px Outfit, sans-serif; margin-top: 6px; letter-spacing: 1px; }
 `;
 
 export default function Studio() {
@@ -231,24 +300,27 @@ function StudioWeb() {
     [mode, imageCanonical, corners],
   );
 
-  const stops = useMemo(() => {
-    const n = canonical.length;
-    return Array.from({ length: 14 }, (_, i) =>
-      canonical[Math.round((i * (n - 1)) / 13)],
-    ) as [string, string, ...string[]];
-  }, [canonical]);
+  // The solved field at the preview size: exact corner blend, or a smooth
+  // bicubic resample of the image grid — the same path play uses.
+  const fieldAt = useMemo(
+    () => (cols: number, rows: number): Lab[] =>
+      mode === "corners"
+        ? bilinearField(toLabs4(corners), cols, rows)
+        : resampleField(canonical.map(hexToLab), CANONICAL_COLS, CANONICAL_ROWS, cols, rows),
+    [mode, corners, canonical],
+  );
 
-  const tileColors = useMemo(() => {
-    const out: string[] = [];
-    for (let y = 0; y < grid.rows; y++) {
-      for (let x = 0; x < grid.cols; x++) {
-        const sx = Math.round((x / (grid.cols - 1)) * (CANONICAL_COLS - 1));
-        const sy = Math.round((y / (grid.rows - 1)) * (CANONICAL_ROWS - 1));
-        out.push(canonical[sy * CANONICAL_COLS + sx]);
-      }
-    }
-    return out;
-  }, [canonical, grid]);
+  const smooth = useMemo(() => fieldAt(32, 20).map(labToHex), [fieldAt]);
+
+  const tileLabs = useMemo(() => fieldAt(grid.cols, grid.rows), [fieldAt, grid]);
+  const tileColors = useMemo(
+    () => quantizeField(tileLabs, grid.cols, grid.rows),
+    [tileLabs, grid],
+  );
+  const read = useMemo(
+    () => readability(tileColors.map(hexToLab), grid.cols, grid.rows),
+    [tileColors, grid],
+  );
 
   // Exact square tiles that always fit: bounded by available width AND a
   // comfortable preview height — the full grid is visible at every size.
@@ -285,7 +357,7 @@ function StudioWeb() {
       <GradientBackdrop />
       <SafeAreaView style={styles.safe} edges={["top"]}>
         <View style={styles.header}>
-          <Pressable hitSlop={12} onPress={() => router.back()} style={styles.back}>
+          <Pressable accessibilityRole="button" hitSlop={12} accessibilityLabel="Back" onPress={() => router.back()} style={styles.back}>
             <Text style={styles.backIcon}>‹</Text>
           </Pressable>
           <Text style={styles.title}>studio</Text>
@@ -297,7 +369,7 @@ function StudioWeb() {
           {/* Source mode */}
           <View style={styles.modeRow}>
             {(["corners", "image"] as const).map((m) => (
-              <Pressable
+              <Pressable accessibilityRole="button"
                 key={m}
                 style={[styles.modeChip, mode === m && styles.modeChipActive]}
                 onPress={() => {
@@ -335,20 +407,28 @@ function StudioWeb() {
             }}
           />
 
-          {/* Smooth preview */}
+          {mode === "corners" && (
+            <Pressable accessibilityRole="button"
+              style={styles.surprise}
+              onPress={() => {
+                setCorners(surpriseCorners(Date.now() >>> 0));
+                setJustSaved(null);
+              }}
+              accessibilityLabel="Suggest four corner colors"
+            >
+              <Text style={styles.surpriseText}>surprise me</Text>
+            </Pressable>
+          )}
+
+          {/* Smooth preview: the true 2D field, seamless */}
           <Text style={styles.sectionLabel}>preview</Text>
-          <LinearGradient
-            colors={stops}
-            start={{ x: 0, y: 0 }}
-            end={{ x: 1, y: 1 }}
-            style={styles.smoothPreview}
-          />
+          <MiniBoard colors={smooth} cols={32} rows={20} fill radius={radius.md} />
 
           {/* Tile preview */}
           <Text style={styles.sectionLabel}>as tiles</Text>
           <View style={styles.gridRow}>
             {GRID_PRESETS.map((g) => (
-              <Pressable
+              <Pressable accessibilityRole="button"
                 key={g.label}
                 style={[styles.gridChip, grid.label === g.label && styles.gridChipActive]}
                 onPress={() => setGrid(g)}
@@ -382,7 +462,15 @@ function StudioWeb() {
             ))}
           </View>
 
-          <Pressable style={styles.saveButton} onPress={save}>
+          <View
+            style={[styles.readRow, !read.ok && styles.readRowWarn]}
+            accessibilityLiveRegion="polite"
+          >
+            <Text style={[styles.readLabel, !read.ok && styles.readLabelWarn]}>{read.label}</Text>
+            <Text style={styles.readNote}>{read.note}</Text>
+          </View>
+
+          <Pressable accessibilityRole="button" style={styles.saveButton} onPress={save}>
             <Text style={styles.saveButtonText}>save to library</Text>
           </Pressable>
           {justSaved && (
@@ -396,16 +484,12 @@ function StudioWeb() {
           )}
           {gradients.map((g) => (
             <View key={g.id} style={styles.libraryRow}>
-              <LinearGradient
-                colors={(() => {
-                  const n = g.canonical.length;
-                  return Array.from({ length: 12 }, (_, i) =>
-                    g.canonical[Math.round((i * (n - 1)) / 11)],
-                  ) as [string, string, ...string[]];
-                })()}
-                start={{ x: 0, y: 0 }}
-                end={{ x: 1, y: 0 }}
-                style={styles.libraryStrip}
+              <MiniBoard
+                colors={quantizeField(gradientField(g, 6, 8), 6, 8)}
+                cols={6}
+                rows={8}
+                height={52}
+                radius={radius.sm}
               />
               <View style={styles.libraryInfo}>
                 <Text style={styles.libraryName}>{g.name}</Text>
@@ -413,7 +497,7 @@ function StudioWeb() {
                   {g.kind === "image" ? "image" : "corners"} · plays at any size
                 </Text>
               </View>
-              <Pressable
+              <Pressable accessibilityRole="button"
                 style={styles.playChip}
                 onPress={() => play(g, grid.cols, grid.rows)}
                 accessibilityLabel={`Play ${g.name}`}
@@ -422,7 +506,7 @@ function StudioWeb() {
                   play {grid.label}
                 </Text>
               </Pressable>
-              <Pressable
+              <Pressable accessibilityRole="button"
                 hitSlop={8}
                 onPress={() => removeGradient(g.id)}
                 accessibilityLabel={`Delete ${g.name}`}
@@ -465,7 +549,27 @@ const styles = StyleSheet.create({
   modeText: { ...typeScale.small, ...trackedUpper, color: palette.textDim },
   modeTextActive: { color: palette.accent },
   sectionLabel: { ...typeScale.small, ...trackedUpper, color: palette.accent, marginTop: spacing.md },
-  smoothPreview: { width: "100%", height: 120, borderRadius: radius.md },
+  surprise: {
+    alignSelf: "center",
+    borderWidth: 1,
+    borderColor: palette.line,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+  },
+  surpriseText: { ...typeScale.small, ...trackedUpper, color: palette.textDim },
+  readRow: {
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.md,
+    backgroundColor: palette.surface,
+    borderRadius: radius.md,
+    padding: spacing.md,
+  },
+  readRowWarn: { borderWidth: 1, borderColor: palette.accent },
+  readLabel: { ...typeScale.small, ...trackedUpper, color: palette.text, minWidth: 84 },
+  readLabelWarn: { color: palette.accent },
+  readNote: { ...typeScale.small, color: palette.textDim, flex: 1 },
   gridRow: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap" },
   gridChip: {
     paddingHorizontal: spacing.md,
@@ -497,7 +601,6 @@ const styles = StyleSheet.create({
     padding: spacing.md,
     gap: spacing.md,
   },
-  libraryStrip: { width: 64, height: 40, borderRadius: radius.sm },
   libraryInfo: { flex: 1, gap: 2 },
   libraryName: { ...typeScale.body, color: palette.text },
   libraryMeta: { ...typeScale.small, color: palette.textFaint },

@@ -8,7 +8,7 @@ import { useCallback, useMemo, useState } from "react";
 import { Pressable, StyleSheet, Text, useWindowDimensions, View } from "react-native";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Board, { BoardPhase } from "./Board";
-import { applySwap, cornerCells, generatePuzzle, isSolved } from "@/engine";
+import { applySwap, cornerCells, generatePuzzle, isSolved, OPEN_MOOD } from "@/engine";
 import { playSound } from "@/lib/sound";
 import { hapticSolve } from "@/lib/haptics";
 import { useProfile } from "@/state/profile";
@@ -27,12 +27,9 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         {
           cols: 3,
           rows: 3,
-          cornerMode: "diagonal",
-          hueSpan: 0.85,
-          lightRange: [0.55, 0.9],
-          chromaRange: [0.09, 0.16],
-          minAdjacentDelta: 0.07,
-          maxAdjacentDelta: 0.18,
+          step: 0.15,
+          twist: [0, 0.2],
+          mood: OPEN_MOOD,
           revealMs: 2600,
         },
         TEACH_SEED,
@@ -79,7 +76,7 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
         <Text style={styles.sub}>
           {solved
             ? "endless gradients await — no timers, ever"
-            : "watch the pattern, then drag tiles to trade places"}
+            : "watch the pattern, then drag — or tap two tiles — to trade places"}
         </Text>
       </View>
 
@@ -100,11 +97,11 @@ export default function Onboarding({ onDone }: { onDone: () => void }) {
 
       <View style={styles.footer}>
         {solved ? (
-          <Pressable style={styles.begin} onPress={onDone}>
+          <Pressable accessibilityRole="button" style={styles.begin} onPress={onDone}>
             <Text style={styles.beginText}>begin the journey</Text>
           </Pressable>
         ) : (
-          <Pressable hitSlop={12} onPress={onDone}>
+          <Pressable accessibilityRole="button" hitSlop={12} onPress={onDone}>
             <Text style={styles.skip}>skip — I know how this works</Text>
           </Pressable>
         )}
