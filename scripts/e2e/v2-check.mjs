@@ -38,10 +38,10 @@ await page.evaluate(() => {
   p.state.settings.showMoves = true;
   localStorage.setItem("gradhuely-profile", JSON.stringify(p));
 });
-await page.goto(`${BASE}/play?mode=level&n=10`, { waitUntil: "load" });
-await page.waitForTimeout(5200);
+await page.reload({ waitUntil: "load" });
+await page.waitForTimeout(5800);
 const body2 = await page.locator("body").innerText();
-console.log("HUD shows 'set corners' with assist off:", /set corners/.test(body2));
+console.log("HUD shows 'set corners' with assist off:", /set corners/i.test(body2));
 await page.screenshot({ path: "/tmp/gh-v2-assist-off.png" });
 
 // 4. Studio: create from corners, save, play

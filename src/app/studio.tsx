@@ -8,8 +8,8 @@
  * each difficulty, and one tap plays it for real.
  */
 
-import { useEffect, useMemo, useState } from "react";
-import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { useEffect, useMemo, useRef, useState } from "react";
+import { LayoutChangeEvent, Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { createPortal } from "react-dom";
 import { router } from "expo-router";
 import { LinearGradient } from "expo-linear-gradient";
@@ -90,20 +90,28 @@ function sampleImage(file: File): Promise<string[]> {
   });
 }
 
-function Portal({ children }: { children: React.ReactNode }) {
-  const [host] = useState(() => {
-    if (typeof document === "undefined") return null;
-    return document.createElement("div");
-  });
+/**
+ * Portals raw DOM controls into a View that lives in the normal React Native
+ * layout — the inputs render exactly where this component sits, clickable,
+ * never trapped below the app.
+ */
+function PortalIntoView({ children }: { children: React.ReactNode }) {
+  // Web-only escape hatch: the RN View's ref exposes the underlying DOM node.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const hostRef = useRef<any>(null);
+  const [host, setHost] = useState<HTMLElement | null>(null);
+
   useEffect(() => {
-    if (!host) return;
-    document.body.appendChild(host);
-    return () => {
-      host.remove();
-    };
-  }, [host]);
-  if (!host) return null;
-  return createPortal(children, host);
+    const el = hostRef.current as HTMLElement | null;
+    if (el && typeof el.appendChild === "function") setHost(el);
+  }, []);
+
+  return (
+    <>
+      <View ref={hostRef} collapsable={false} />
+      {host ? createPortal(children, host) : null}
+    </>
+  );
 }
 
 function StudioForm({
@@ -122,7 +130,7 @@ function StudioForm({
   onImage: (f: File) => void;
 }) {
   return (
-    <Portal>
+    <PortalIntoView>
       <style>{ghCss}</style>
       <div className="gh-studio-form">
         <input
@@ -156,7 +164,7 @@ function StudioForm({
           </label>
         )}
       </div>
-    </Portal>
+    </PortalIntoView>
   );
 }
 
@@ -208,6 +216,12 @@ function StudioWeb() {
     GRID_PRESETS[1],
   );
   const [justSaved, setJustSaved] = useState<string | null>(null);
+  const [availWidth, setAvailWidth] = useState(600);
+
+  const onMeasure = (e: LayoutChangeEvent) => {
+    const w = e.nativeEvent.layout.width;
+    setAvailWidth((prev) => (Math.abs(prev - w) > 1 ? w : prev));
+  };
 
   const canonical = useMemo(
     () =>
@@ -235,6 +249,19 @@ function StudioWeb() {
     }
     return out;
   }, [canonical, grid]);
+
+  // Exact square tiles that always fit: bounded by available width AND a
+  // comfortable preview height — the full grid is visible at every size.
+  const GROUT = 1;
+  const tileSide = Math.max(
+    8,
+    Math.floor(
+      Math.min(
+        (availWidth - grid.cols * GROUT) / grid.cols,
+        440 / grid.rows,
+      ),
+    ),
+  );
 
   const save = () => {
     const id = addGradient({
@@ -266,6 +293,7 @@ function StudioWeb() {
         </View>
 
         <ScrollView contentContainerStyle={styles.content}>
+          <View onLayout={onMeasure} collapsable={false} />
           {/* Source mode */}
           <View style={styles.modeRow}>
             {(["corners", "image"] as const).map((m) => (
@@ -329,15 +357,26 @@ function StudioWeb() {
               </Pressable>
             ))}
           </View>
-          <View style={styles.tilePreview}>
+          <View
+            style={[
+              styles.tilePreview,
+              {
+                width: grid.cols * tileSide,
+                height: grid.rows * tileSide,
+                alignSelf: "center",
+              },
+            ]}
+          >
             {tileColors.map((c, i) => (
               <View
                 key={i}
                 style={{
-                  width: `${100 / grid.cols}%`,
-                  aspectRatio: 1,
+                  position: "absolute",
+                  left: (i % grid.cols) * tileSide + GROUT / 2,
+                  top: Math.floor(i / grid.cols) * tileSide + GROUT / 2,
+                  width: tileSide - GROUT,
+                  height: tileSide - GROUT,
                   backgroundColor: c,
-                  margin: 0.5,
                 }}
               />
             ))}
@@ -407,7 +446,7 @@ const styles = StyleSheet.create({
   content: {
     padding: spacing.xl,
     gap: spacing.md,
-    maxWidth: 560,
+    maxWidth: 960,
     width: "100%",
     alignSelf: "center",
     paddingBottom: 80,
@@ -437,10 +476,8 @@ const styles = StyleSheet.create({
   gridChipActive: { borderWidth: 1, borderColor: palette.accent },
   gridChipText: { ...typeScale.small, ...trackedUpper, color: palette.textDim },
   tilePreview: {
-    flexDirection: "row",
-    flexWrap: "wrap",
-    width: "100%",
     borderRadius: radius.sm,
+    overflow: "hidden",
   },
   saveButton: {
     backgroundColor: palette.accent,
