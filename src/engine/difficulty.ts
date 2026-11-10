@@ -88,7 +88,8 @@ export function levelParams(level: number): PuzzleParams {
   const breather = level > 8 && level % 10 === 0;
 
   const cols = clamp(Math.round(lerp(4, 10, prog) + Math.sin(level * 0.7) * 0.49), 4, 10);
-  const aspect = 1.0 + 0.4 * (0.5 + 0.5 * Math.sin(level * 0.13 + 1));
+  // Portrait boards ease in over time — the opening levels stay square.
+  const aspect = 1.0 + 0.4 * prog * (0.5 + 0.5 * Math.sin(level * 0.13 + 1));
   const rows = clamp(Math.round(cols * aspect), cols, 14);
 
   const anchors = 3 + (prog > 0.35 ? 1 : 0) + (prog > 0.75 ? 1 : 0);

@@ -1,18 +1,45 @@
-import { DarkTheme, DefaultTheme, ThemeProvider } from 'expo-router';
-import * as SplashScreen from 'expo-splash-screen';
-import { useColorScheme } from 'react-native';
+import { Stack } from "expo-router";
+import { StatusBar } from "expo-status-bar";
+import { useFonts } from "expo-font";
+import {
+  Outfit_400Regular,
+  Outfit_500Medium,
+  Outfit_600SemiBold,
+  Outfit_700Bold,
+} from "@expo-google-fonts/outfit";
+import { GestureHandlerRootView } from "react-native-gesture-handler";
+import { SafeAreaProvider } from "react-native-safe-area-context";
+import { font, palette } from "@/theme";
 
-import { AnimatedSplashOverlay } from '@/components/animated-icon';
-import AppTabs from '@/components/app-tabs';
+export default function RootLayout() {
+  const [loaded] = useFonts({
+    [font.regular]: Outfit_400Regular,
+    [font.medium]: Outfit_500Medium,
+    [font.semiBold]: Outfit_600SemiBold,
+    [font.bold]: Outfit_700Bold,
+  });
 
-SplashScreen.preventAutoHideAsync();
+  if (!loaded) return null;
 
-export default function TabLayout() {
-  const colorScheme = useColorScheme();
   return (
-    <ThemeProvider value={colorScheme === 'dark' ? DarkTheme : DefaultTheme}>
-      <AnimatedSplashOverlay />
-      <AppTabs />
-    </ThemeProvider>
+    <GestureHandlerRootView style={{ flex: 1, backgroundColor: palette.bgMenu }}>
+      <SafeAreaProvider>
+        <StatusBar style="light" />
+        <Stack
+          screenOptions={{
+            headerShown: false,
+            contentStyle: { backgroundColor: palette.bgPlay },
+            animation: "fade",
+          }}
+        >
+          <Stack.Screen name="index" />
+          <Stack.Screen name="play" />
+          <Stack.Screen name="zen" />
+          <Stack.Screen name="gallery" />
+          <Stack.Screen name="stats" />
+          <Stack.Screen name="settings" />
+        </Stack>
+      </SafeAreaProvider>
+    </GestureHandlerRootView>
   );
 }

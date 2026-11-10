@@ -1,98 +1,152 @@
-import * as Device from 'expo-device';
-import { Platform, StyleSheet } from 'react-native';
-import { SafeAreaView } from 'react-native-safe-area-context';
+import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import { router } from "expo-router";
+import { SafeAreaView } from "react-native-safe-area-context";
+import { chapterName } from "@/engine";
+import { useProfile } from "@/state/profile";
+import { font, palette, radius, spacing, type as typeScale, trackedUpper } from "@/theme";
 
-import { AnimatedIcon } from '@/components/animated-icon';
-import { HintRow } from '@/components/hint-row';
-import { ThemedText } from '@/components/themed-text';
-import { ThemedView } from '@/components/themed-view';
-import { WebBadge } from '@/components/web-badge';
-import { BottomTabInset, MaxContentWidth, Spacing } from '@/constants/theme';
+export default function Home() {
+  const level = useProfile((s) => s.level);
+  const setLevel = useProfile((s) => s.setLevel);
+  const todayKey = new Date().toISOString().slice(0, 10);
+  const todayDone = useProfile((s) => s.today[todayKey]?.solved ?? false);
 
-function getDevMenuHint() {
-  if (Platform.OS === 'web') {
-    return <ThemedText type="small">use browser devtools</ThemedText>;
-  }
-  if (Device.isDevice) {
-    return (
-      <ThemedText type="small">
-        shake device or press <ThemedText type="code">m</ThemedText> in terminal
-      </ThemedText>
-    );
-  }
-  const shortcut = Platform.OS === 'android' ? 'cmd+m (or ctrl+m)' : 'cmd+d';
+  const openLevel = (n: number) =>
+    router.push({ pathname: "/play", params: { mode: "level", n: String(n) } });
+
   return (
-    <ThemedText type="small">
-      press <ThemedText type="code">{shortcut}</ThemedText>
-    </ThemedText>
-  );
-}
+    <SafeAreaView style={styles.safe} edges={["top"]}>
+      <ScrollView contentContainerStyle={styles.content}>
+        {/* Wordmark */}
+        <View style={styles.wordmarkRow}>
+          <Text style={styles.wordmark}>grad</Text>
+          <Text style={[styles.wordmark, styles.wordmarkHue]}>[hue]</Text>
+          <Text style={styles.wordmark}>ly</Text>
+        </View>
+        <Text style={styles.tagline}>endless gradients, at your pace</Text>
 
-export default function HomeScreen() {
-  return (
-    <ThemedView style={styles.container}>
-      <SafeAreaView style={styles.safeArea}>
-        <ThemedView style={styles.heroSection}>
-          <AnimatedIcon />
-          <ThemedText type="title" style={styles.title}>
-            Welcome to&nbsp;Expo
-          </ThemedText>
-        </ThemedView>
+        {/* Continue */}
+        <Pressable style={styles.cardPrimary} onPress={() => openLevel(level)}>
+          <View style={styles.cardPrimaryLeft}>
+            <Text style={styles.cardKicker}>continue</Text>
+            <Text style={styles.cardTitle}>
+              {chapterName(level)} · {level}
+            </Text>
+          </View>
+          <View style={styles.steppers}>
+            <Pressable
+              hitSlop={10}
+              style={styles.stepper}
+              onPress={() => setLevel(Math.max(1, level - 25))}
+              accessibilityLabel="Jump back 25 levels"
+            >
+              <Text style={styles.stepperText}>–25</Text>
+            </Pressable>
+            <Pressable
+              hitSlop={10}
+              style={styles.stepper}
+              onPress={() => setLevel(level + 25)}
+              accessibilityLabel="Jump ahead 25 levels"
+            >
+              <Text style={styles.stepperText}>+25</Text>
+            </Pressable>
+          </View>
+        </Pressable>
 
-        <ThemedText type="code" style={styles.code}>
-          get started
-        </ThemedText>
+        {/* Today + Zen */}
+        <View style={styles.rowPair}>
+          <Pressable
+            style={[styles.card, styles.cardHalf]}
+            onPress={() => router.push({ pathname: "/play", params: { mode: "today" } })}
+          >
+            <Text style={styles.cardKicker}>today</Text>
+            <Text style={styles.cardTitleSmall}>
+              {todayDone ? "solved ✓" : "a gradient for everyone"}
+            </Text>
+          </Pressable>
+          <Pressable style={[styles.card, styles.cardHalf]} onPress={() => router.push("/zen")}>
+            <Text style={styles.cardKicker}>zen</Text>
+            <Text style={styles.cardTitleSmall}>free play</Text>
+          </Pressable>
+        </View>
 
-        <ThemedView type="backgroundElement" style={styles.stepContainer}>
-          <HintRow
-            title="Try editing"
-            hint={<ThemedText type="code">src/app/index.tsx</ThemedText>}
-          />
-          <HintRow title="Dev tools" hint={getDevMenuHint()} />
-          <HintRow
-            title="Fresh start"
-            hint={<ThemedText type="code">npm run reset-project</ThemedText>}
-          />
-        </ThemedView>
-
-        {Platform.OS === 'web' && <WebBadge />}
-      </SafeAreaView>
-    </ThemedView>
+        {/* Secondary */}
+        <View style={styles.links}>
+          <Pressable onPress={() => router.push("/gallery")}>
+            <Text style={styles.link}>gallery</Text>
+          </Pressable>
+          <Text style={styles.linkDot}>·</Text>
+          <Pressable onPress={() => router.push("/stats")}>
+            <Text style={styles.link}>stats</Text>
+          </Pressable>
+          <Text style={styles.linkDot}>·</Text>
+          <Pressable onPress={() => router.push("/settings")}>
+            <Text style={styles.link}>settings</Text>
+          </Pressable>
+        </View>
+      </ScrollView>
+    </SafeAreaView>
   );
 }
 
 const styles = StyleSheet.create({
-  container: {
-    flex: 1,
-    justifyContent: 'center',
-    flexDirection: 'row',
+  safe: { flex: 1, backgroundColor: palette.bgMenu },
+  content: {
+    flexGrow: 1,
+    justifyContent: "center",
+    gap: spacing.lg,
+    padding: spacing.xl,
+    maxWidth: 560,
+    width: "100%",
+    alignSelf: "center",
   },
-  safeArea: {
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    alignItems: 'center',
-    gap: Spacing.three,
-    paddingBottom: BottomTabInset + Spacing.three,
-    maxWidth: MaxContentWidth,
+  wordmarkRow: { flexDirection: "row", justifyContent: "center" },
+  wordmark: {
+    ...typeScale.display,
+    color: palette.text,
+    fontFamily: font.bold,
+    fontSize: 40,
+    lineHeight: 46,
   },
-  heroSection: {
-    alignItems: 'center',
-    justifyContent: 'center',
-    flex: 1,
-    paddingHorizontal: Spacing.four,
-    gap: Spacing.four,
+  wordmarkHue: { color: palette.accent },
+  tagline: {
+    ...typeScale.small,
+    ...trackedUpper,
+    color: palette.textFaint,
+    textAlign: "center",
+    marginBottom: spacing.xl,
+    opacity: 0.85,
   },
-  title: {
-    textAlign: 'center',
+  stepper: {
+    backgroundColor: palette.surfaceRaised,
+    borderRadius: radius.pill,
+    paddingHorizontal: spacing.md,
+    paddingVertical: spacing.sm,
+    opacity: 0.55,
   },
-  code: {
-    textTransform: 'uppercase',
+  cardPrimary: {
+    flexDirection: "row",
+    alignItems: "center",
+    backgroundColor: palette.surface,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+    gap: spacing.md,
   },
-  stepContainer: {
-    gap: Spacing.three,
-    alignSelf: 'stretch',
-    paddingHorizontal: Spacing.three,
-    paddingVertical: Spacing.four,
-    borderRadius: Spacing.four,
+  cardPrimaryLeft: { flex: 1 },
+  card: {
+    backgroundColor: palette.surface,
+    borderRadius: radius.lg,
+    padding: spacing.xl,
+    gap: spacing.xs,
   },
+  cardHalf: { flex: 1 },
+  cardKicker: { ...typeScale.small, ...trackedUpper, color: palette.accent },
+  cardTitle: { ...typeScale.heading, color: palette.text, marginTop: 2 },
+  cardTitleSmall: { ...typeScale.body, color: palette.textDim, marginTop: 2 },
+  rowPair: { flexDirection: "row", gap: spacing.md },
+  steppers: { flexDirection: "row", gap: spacing.sm },
+  stepperText: { ...typeScale.small, color: palette.textDim, ...trackedUpper },
+  links: { flexDirection: "row", justifyContent: "center", gap: spacing.md, marginTop: spacing.sm },
+  link: { ...typeScale.small, ...trackedUpper, color: palette.textDim },
+  linkDot: { color: palette.textFaint },
 });
