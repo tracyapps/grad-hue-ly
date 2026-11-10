@@ -125,6 +125,7 @@ const styles = StyleSheet.create({
   listRow: { gap: spacing.md },
   card: {
     flex: 1,
+    maxWidth: "50%",
     backgroundColor: palette.surface,
     borderRadius: radius.md,
     padding: spacing.md,
