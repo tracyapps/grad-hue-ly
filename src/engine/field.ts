@@ -197,6 +197,25 @@ export interface FieldQuality {
   twin: number;
   /** Same, absolute ΔE_OK2. */
   twinAbs: number;
+  /**
+   * Closest look-alike pair among NEARBY tiles (diagonal or two apart, at
+   * most 2 cells either way), ÷ mean step. Any smooth four-corner gradient
+   * has a direction where colors barely change, so a diagonal neighbor can
+   * be close — that's fine (the game accepts look-alike swaps), until it's
+   * nearly a copy.
+   */
+  nearTwin: number;
+  /** Closest look-alike pair 3+ cells apart, ÷ mean step — true ambiguity. */
+  farTwin: number;
+}
+
+/** Below these, a board has tiles that are effectively copies of each other. */
+export const NEAR_TWIN_MIN = 0.25;
+export const FAR_TWIN_MIN = 0.4;
+
+/** True when some tiles can't be told apart well enough to place fairly. */
+export function isAmbiguous(q: Pick<FieldQuality, "nearTwin" | "farTwin">): boolean {
+  return q.nearTwin < NEAR_TWIN_MIN || q.farTwin < FAR_TWIN_MIN;
 }
 
 export function fieldQuality(labs: Lab[], cols: number, rows: number): FieldQuality {
@@ -232,26 +251,38 @@ export function fieldQuality(labs: Lab[], cols: number, rows: number): FieldQual
       kink = Math.max(kink, Math.abs(s[k + 1] - s[k]) / Math.max(meanStep, 1e-9));
   }
   let twinAbs = Infinity;
+  let nearAbs = Infinity;
+  let farAbs = Infinity;
   for (let i = 0; i < labs.length; i++) {
     const xi = i % cols;
     const yi = (i - xi) / cols;
     for (let j = i + 1; j < labs.length; j++) {
       const xj = j % cols;
       const yj = (j - xj) / cols;
-      if (Math.abs(xi - xj) + Math.abs(yi - yj) <= 1) continue;
+      const dx = Math.abs(xi - xj);
+      const dy = Math.abs(yi - yj);
+      if (dx + dy <= 1) continue;
       const d = deltaP(labs[i], labs[j]);
       if (d < twinAbs) twinAbs = d;
+      if (Math.max(dx, dy) >= 3) {
+        if (d < farAbs) farAbs = d;
+      } else if (d < nearAbs) nearAbs = d;
     }
   }
   if (!Number.isFinite(twinAbs)) twinAbs = meanStep;
+  if (!Number.isFinite(nearAbs)) nearAbs = meanStep;
+  if (!Number.isFinite(farAbs)) farAbs = meanStep;
+  const per = Math.max(meanStep, 1e-9);
   return {
     meanStep,
     minStep: Number.isFinite(minStep) ? minStep : 0,
     maxStep,
     evenness,
     kink,
-    twin: twinAbs / Math.max(meanStep, 1e-9),
+    twin: twinAbs / per,
     twinAbs,
+    nearTwin: nearAbs / per,
+    farTwin: farAbs / per,
   };
 }
 

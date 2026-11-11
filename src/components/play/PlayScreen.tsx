@@ -18,7 +18,8 @@ import {
   applySwap,
   applyCornerLocks,
   cornerCells,
-  isSolved,
+  hexToLab,
+  isSolvedBy,
   type Puzzle,
   type ZenSize,
   type ZenSubtlety,
@@ -135,6 +136,8 @@ export default function PlayScreen({
     };
   }, [startShuffle, puzzle.params.revealMs]);
 
+  const labs = useMemo(() => puzzle.colors.map(hexToLab), [puzzle.colors]);
+
   const handleSolved = useCallback(
     (originCell: number, moveCount: number) => {
       setCelebrateOrigin(originCell);
@@ -172,9 +175,13 @@ export default function PlayScreen({
       setHintVisible(false);
       hapticDrop();
       playSound("drop");
-      if (isSolved(next)) handleSolved(to, moves + 1);
+      if (isSolvedBy(next, labs)) {
+        // Look-alike tiles count; settle them home so the finished board is exact.
+        setPlacement(next.map((_, i) => i));
+        handleSolved(to, moves + 1);
+      }
     },
-    [phase, placement, moves, handleSolved],
+    [phase, placement, moves, handleSolved, labs],
   );
 
   /** Rescue action: place the four corners, free of charge. */
@@ -186,8 +193,11 @@ export default function PlayScreen({
     setHintVisible(false);
     hapticDrop();
     playSound("drop");
-    if (isSolved(next)) handleSolved(cornerCells(puzzle.cols, puzzle.rows)[0], moves);
-  }, [phase, placement, puzzle.cols, puzzle.rows, handleSolved, moves]);
+    if (isSolvedBy(next, labs)) {
+      setPlacement(next.map((_, i) => i));
+      handleSolved(cornerCells(puzzle.cols, puzzle.rows)[0], moves);
+    }
+  }, [phase, placement, puzzle.cols, puzzle.rows, handleSolved, moves, labs]);
 
   const restart = useCallback(() => {
     recorded.current = false;

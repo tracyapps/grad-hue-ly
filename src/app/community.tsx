@@ -13,7 +13,7 @@ import ScreenHeader from "@/components/ScreenHeader";
 import MiniBoard from "@/components/MiniBoard";
 import BoardSheet from "@/components/BoardSheet";
 import type { BoardChoice } from "@/components/BoardPicker";
-import { fieldQuality, hexToLab, quantizeField } from "@/engine";
+import { fieldQuality, hexToLab, isAmbiguous, quantizeField } from "@/engine";
 import { gradientField } from "@/state/studio";
 import { useCommunity, type CommunityBoard, type CommunitySort } from "@/sync/community";
 import { accountsAvailable } from "@/sync/auth";
@@ -73,7 +73,7 @@ export default function Community() {
   const note = useMemo(() => {
     if (!preview) return null;
     const q = fieldQuality(preview.colors.map(hexToLab), preview.cols, preview.rows);
-    if (q.twin < 0.6) return { text: "at this size some tiles look alike — try fewer tiles", warn: true };
+    if (isAmbiguous(q)) return { text: "at this size some tiles look alike — try fewer tiles", warn: true };
     if (q.minStep < 0.02) return { text: "very faint at this size — expert territory", warn: true };
     return null;
   }, [preview]);

@@ -18,6 +18,7 @@ import ScreenHeader from "@/components/ScreenHeader";
 import {
   bilinearField,
   fieldQuality,
+  isAmbiguous,
   generateField,
   hexToLab,
   labToHex,
@@ -170,10 +171,10 @@ type Readability = { label: string; note: string; ok: boolean };
 
 function readability(labs: Lab[], cols: number, rows: number): Readability {
   const q = fieldQuality(labs, cols, rows);
-  if (q.twin < 0.6)
+  if (isAmbiguous(q))
     return {
       label: "ambiguous",
-      note: "some tiles in different places look alike (often two corners are too similar) — try corners that differ more",
+      note: "some tiles are near-copies of each other (often two corners are too similar, or mirror each other) — try corners that differ more",
       ok: false,
     };
   if (q.minStep < 0.02)

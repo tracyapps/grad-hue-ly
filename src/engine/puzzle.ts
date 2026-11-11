@@ -23,7 +23,7 @@ import {
   ZenOptions,
   type ZenSubtlety,
 } from "./difficulty";
-import { Lab, hexToLab } from "./color";
+import { Lab, deltaP, hexToLab } from "./color";
 import { shuffledPlacement } from "./shuffle";
 import { quantizeField } from "./quantize";
 
@@ -165,6 +165,25 @@ export function generateZen(
 
 export function isSolved(placement: number[]): boolean {
   for (let i = 0; i < placement.length; i++) if (placement[i] !== i) return false;
+  return true;
+}
+
+/**
+ * Two tiles closer than this (ΔE_OK2) look the same on an ordinary screen —
+ * the same floor the readability check uses for "too faint" neighbors.
+ */
+export const LOOKALIKE = 0.02;
+
+/**
+ * Solved, allowing look-alikes: every cell holds its own tile or one that's
+ * visually indistinguishable from it. Matters for player-made boards, where
+ * a diagonal pair can be near-identical; generated boards never have any.
+ */
+export function isSolvedBy(placement: number[], labs: Lab[], tolerance = LOOKALIKE): boolean {
+  for (let i = 0; i < placement.length; i++) {
+    const t = placement[i];
+    if (t !== i && deltaP(labs[t], labs[i]) >= tolerance) return false;
+  }
   return true;
 }
 

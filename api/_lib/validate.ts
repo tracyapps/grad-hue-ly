@@ -8,6 +8,7 @@ import { createHash } from "node:crypto";
 import {
   bilinearField,
   fieldQuality,
+  isAmbiguous,
   hexToLab,
   labToHex,
   quantizeField,
@@ -92,7 +93,7 @@ export function checkBoard(body: unknown): Check<BoardInput> {
   // Same promise the Studio makes: readable at a typical 7×9 board.
   const field = resampleField(canonical.map(hexToLab), CANON_COLS, CANON_ROWS, 7, 9);
   const q = fieldQuality(quantizeField(field, 7, 9).map(hexToLab), 7, 9);
-  if (q.twin < 0.6) return { ok: false, error: "ambiguous" };
+  if (isAmbiguous(q)) return { ok: false, error: "ambiguous" };
   if (q.minStep < 0.02) return { ok: false, error: "too_faint" };
 
   const fingerprint = createHash("sha256").update(canonical.join("")).digest("hex").slice(0, 32);
