@@ -236,7 +236,7 @@ function StudioForm({
           className="gh-name"
           type="text"
           aria-label="Gradient name"
-          placeholder="name this gradient (or we\u2019ll name it for you)"
+          placeholder="name this gradient (or we’ll name it for you)"
           value={name}
           onChange={(e) => onName(e.target.value)}
           maxLength={28}
@@ -456,7 +456,7 @@ function StudioWeb() {
   const share = async (g: StudioGradient) => {
     const acct = useAccount.getState();
     if (acct.status !== "signed-in") {
-      setShareMsg({ id: g.id, text: "sign in (settings → account) to share with the community" });
+      setShareMsg({ id: g.id, text: "sign in from your account page to share with the community" });
       return;
     }
     if (!acct.username) {
@@ -489,6 +489,8 @@ function StudioWeb() {
     updateGradient(g.id, { sharedId: undefined });
     setShareMsg({ id: g.id, text: "removed from the community" });
   };
+
+  const justSavedGradient = justSaved ? gradients.find((g) => g.id === justSaved) ?? null : null;
 
   return (
     <View style={{ flex: 1 }}>
@@ -630,10 +632,25 @@ function StudioWeb() {
               <Text style={styles.saveButtonText}>save to library</Text>
             </Pressable>
           )}
-          {justSaved && (
-            <Text style={styles.savedNote} accessibilityLiveRegion="polite">
-              saved — find it in the library below
-            </Text>
+          {justSavedGradient && (
+            <View style={styles.savedBox} accessibilityLiveRegion="polite">
+              <Text style={styles.savedNote}>
+                saved to your library{justSavedGradient.sharedId ? " · shared with the community" : ""}
+              </Text>
+              {!justSavedGradient.sharedId && (
+                <Pressable
+                  accessibilityRole="button"
+                  accessibilityLabel={`Share ${justSavedGradient.name} with the community`}
+                  onPress={() => void share(justSavedGradient)}
+                  style={styles.savedShare}
+                >
+                  <Text style={styles.savedShareText}>share with the community</Text>
+                </Pressable>
+              )}
+              {shareMsg?.id === justSavedGradient.id && !justSavedGradient.sharedId && (
+                <Text style={styles.shareMsg}>{shareMsg.text}</Text>
+              )}
+            </View>
           )}
 
           {/* Library */}
@@ -679,22 +696,22 @@ function StudioWeb() {
                     <Text style={styles.shareMsg} accessibilityLiveRegion="polite">{shareMsg.text}</Text>
                   )}
                   <View style={styles.gridActions}>
-                    <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${g.name}`} hitSlop={6} onPress={() => edit(g)}>
+                    <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${g.name}`} hitSlop={6} style={styles.gridActionHit} onPress={() => edit(g)}>
                       <Text style={styles.gridAction}>edit</Text>
                     </Pressable>
-                    <Pressable accessibilityRole="button" accessibilityLabel={`Play ${g.name} — choose a size`} hitSlop={6} onPress={() => openSheet(g)}>
+                    <Pressable accessibilityRole="button" accessibilityLabel={`Play ${g.name} — choose a size`} hitSlop={6} style={styles.gridActionHit} onPress={() => openSheet(g)}>
                       <Text style={styles.gridAction}>play</Text>
                     </Pressable>
                     {g.sharedId ? (
-                      <Pressable accessibilityRole="button" accessibilityLabel={`Stop sharing ${g.name}`} hitSlop={6} onPress={() => void unshare(g)}>
+                      <Pressable accessibilityRole="button" accessibilityLabel={`Stop sharing ${g.name}`} hitSlop={6} style={styles.gridActionHit} onPress={() => void unshare(g)}>
                         <Text style={styles.gridActionShared}>shared ✓</Text>
                       </Pressable>
                     ) : (
-                      <Pressable accessibilityRole="button" accessibilityLabel={`Share ${g.name} with the community`} hitSlop={6} onPress={() => void share(g)}>
+                      <Pressable accessibilityRole="button" accessibilityLabel={`Share ${g.name} with the community`} hitSlop={6} style={styles.gridActionHit} onPress={() => void share(g)}>
                         <Text style={styles.gridAction}>share</Text>
                       </Pressable>
                     )}
-                    <Pressable accessibilityRole="button" accessibilityLabel={`Delete ${g.name}`} hitSlop={6} onPress={() => removeGradient(g.id)}>
+                    <Pressable accessibilityRole="button" accessibilityLabel={`Delete ${g.name}`} hitSlop={6} style={styles.gridActionHit} onPress={() => removeGradient(g.id)}>
                       <Text style={styles.gridActionDim}>delete</Text>
                     </Pressable>
                   </View>
@@ -845,7 +862,7 @@ const styles = StyleSheet.create({
   viewChipTextActive: { color: palette.text },
   libraryGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
   gridCard: {
-    width: 168,
+    width: 150,
     flexGrow: 1,
     maxWidth: 220,
     backgroundColor: palette.surface,
@@ -858,7 +875,18 @@ const styles = StyleSheet.create({
   gridCardEditing: { borderColor: palette.accent },
   gridArt: { alignItems: "center", justifyContent: "center", height: 150 },
   gridName: { ...typeScale.body, color: palette.text },
-  gridActions: { flexDirection: "row", gap: spacing.md },
+  gridActions: { flexDirection: "row", flexWrap: "wrap", columnGap: spacing.md, rowGap: 0 },
+  gridActionHit: { minHeight: 36, justifyContent: "center" },
+  savedBox: { alignItems: "center", gap: spacing.sm },
+  savedShare: {
+    minHeight: 40,
+    paddingHorizontal: spacing.lg,
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: palette.accent,
+    justifyContent: "center",
+  },
+  savedShareText: { ...typeScale.small, ...trackedUpper, color: palette.accent },
   gridAction: { ...typeScale.small, ...trackedUpper, color: palette.textDim },
   gridActionShared: { ...typeScale.small, ...trackedUpper, color: "#7FD1A8" },
   shareMsg: { ...typeScale.small, color: palette.textDim },

@@ -9,7 +9,7 @@ import ScreenHeader from "@/components/ScreenHeader";
 import { chapterName, generateEndless, generateLevel, generateToday, generateZen, quantizeField } from "@/engine";
 import { useCommunity } from "@/sync/community";
 import { parseGrid, useProfile, type GalleryItem } from "@/state/profile";
-import { gradientField, useStudio } from "@/state/studio";
+import { gradientField, useStudio, type StudioGradient } from "@/state/studio";
 import { palette, radius, spacing, type as typeScale, trackedUpper } from "@/theme";
 
 /** A compact solved-board thumbnail — regenerated deterministically. */
@@ -69,15 +69,67 @@ function GradientCard({ item, worldSeed }: { item: GalleryItem; worldSeed: numbe
   );
 }
 
+/** One of your Studio creations — shown whether or not you've played it. */
+function CreationCard({ g, best }: { g: StudioGradient; best?: number }) {
+  const colors = useMemo(() => quantizeField(gradientField(g, 7, 9), 7, 9), [g]);
+  const status = [best !== undefined ? `solved · ${best} moves` : "not solved yet", g.sharedId ? "shared" : null]
+    .filter(Boolean)
+    .join(" · ");
+  return (
+    <Pressable
+      accessibilityRole="link"
+      accessibilityLabel={`${g.name}, ${status}. Open the studio`}
+      onPress={() => router.push("/studio")}
+      style={styles.card}
+    >
+      <View style={styles.cardArt}>
+        <MiniBoard colors={colors} cols={7} rows={9} height={120} />
+      </View>
+      <Text style={styles.cardName} numberOfLines={1}>{g.name}</Text>
+      <Text style={[styles.cardMeta, g.sharedId && styles.cardShared]}>{status}</Text>
+    </Pressable>
+  );
+}
+
+type Tab = "all" | "level" | "today" | "zen" | "studio" | "community";
+const TABS: Array<{ id: Tab; label: string }> = [
+  { id: "all", label: "all solved" },
+  { id: "level", label: "journey" },
+  { id: "zen", label: "endless" },
+  { id: "community", label: "community" },
+  { id: "today", label: "today" },
+  { id: "studio", label: "my studio" },
+];
+
+const EMPTY: Record<Tab, string> = {
+  all: "nothing here yet — every board you solve collects itself here",
+  level: "journey boards you solve will collect here",
+  zen: "endless boards you solve will collect here",
+  community: "community boards you solve will collect here",
+  today: "solve today's board and it lands here",
+  studio: "nothing crafted yet — make a gradient in the studio",
+};
+
 export default function Gallery() {
   const gallery = useProfile((s) => s.gallery);
   const worldSeed = useProfile((s) => s.worldSeed);
-  const [tab, setTab] = useState<"all" | "level" | "today" | "zen" | "studio" | "community">("all");
+  const gradients = useStudio((s) => s.gradients);
+  const [tab, setTab] = useState<Tab>("all");
 
   const items = useMemo(
     () => (tab === "all" ? gallery : gallery.filter((g) => g.kind === tab)),
     [gallery, tab],
   );
+  /** Fewest moves per studio gradient, from your solves. */
+  const bestByStudio = useMemo(() => {
+    const m = new Map<string, number>();
+    for (const g of gallery) {
+      if (g.kind !== "studio" || !g.studioId) continue;
+      const prev = m.get(g.studioId);
+      if (prev === undefined || g.moves < prev) m.set(g.studioId, g.moves);
+    }
+    return m;
+  }, [gallery]);
 
   return (
     <View style={{ flex: 1 }}>
@@ -85,25 +137,50 @@ export default function Gallery() {
       <SafeAreaView style={styles.safe} edges={["top"]}>
         <ScreenHeader title="gallery" />
 
-        <View style={styles.tabs}>
-          {(["all", "level", "zen", "community", "today", "studio"] as const).map((t) => (
-            <Pressable accessibilityRole="button" key={t} onPress={() => setTab(t)} style={[styles.tab, tab === t && styles.tabActive]}>
-              <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>{t === "zen" ? "endless" : t}</Text>
+        <View style={styles.tabs} accessibilityRole="tablist">
+          {TABS.map((t) => (
+            <Pressable
+              accessibilityRole="tab"
+              aria-selected={tab === t.id}
+              key={t.id}
+              onPress={() => setTab(t.id)}
+              style={[styles.tab, tab === t.id && styles.tabActive]}
+            >
+              <Text style={[styles.tabText, tab === t.id && styles.tabTextActive]}>{t.label}</Text>
             </Pressable>
           ))}
         </View>
 
-        <FlatList
-          data={items}
-          keyExtractor={(g) => g.key}
-          numColumns={2}
-          contentContainerStyle={styles.list}
-          columnWrapperStyle={styles.listRow}
-          ListEmptyComponent={
-            <Text style={styles.empty}>nothing here yet — solved gradients collect themselves</Text>
-          }
-          renderItem={({ item }) => <GradientCard item={item} worldSeed={worldSeed} />}
-        />
+        {tab === "studio" ? (
+          <FlatList
+            key="studio"
+            data={gradients}
+            keyExtractor={(g) => g.id}
+            numColumns={2}
+            contentContainerStyle={styles.list}
+            columnWrapperStyle={styles.listRow}
+            ListHeaderComponent={
+              gradients.length ? (
+                <Text style={styles.intro}>
+                  everything you've saved in the studio. share one from the studio to put it in the community.
+                </Text>
+              ) : undefined
+            }
+            ListEmptyComponent={<Text style={styles.empty}>{EMPTY.studio}</Text>}
+            renderItem={({ item }) => <CreationCard g={item} best={bestByStudio.get(item.id)} />}
+          />
+        ) : (
+          <FlatList
+            key="solved"
+            data={items}
+            keyExtractor={(g) => g.key}
+            numColumns={2}
+            contentContainerStyle={styles.list}
+            columnWrapperStyle={styles.listRow}
+            ListEmptyComponent={<Text style={styles.empty}>{EMPTY[tab]}</Text>}
+            renderItem={({ item }) => <GradientCard item={item} worldSeed={worldSeed} />}
+          />
+        )}
       </SafeAreaView>
     </View>
   );
@@ -115,17 +192,20 @@ const styles = StyleSheet.create({
   back: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   backIcon: { color: palette.textDim, fontSize: 26 },
   title: { ...typeScale.title, color: palette.text, flex: 1, textAlign: "center" },
-  tabs: { flexDirection: "row", gap: spacing.sm, paddingHorizontal: spacing.lg, marginBottom: spacing.md, flexWrap: "wrap" },
+  tabs: { flexDirection: "row", gap: spacing.sm, paddingHorizontal: spacing.lg, marginBottom: spacing.md, flexWrap: "wrap", justifyContent: "center" },
   tab: {
     paddingHorizontal: spacing.md,
-    paddingVertical: spacing.sm,
+    minHeight: 40,
+    justifyContent: "center",
+    borderWidth: 1,
+    borderColor: "transparent",
     borderRadius: radius.pill,
     backgroundColor: palette.surface,
   },
-  tabActive: { backgroundColor: palette.accentSoft, borderWidth: 1, borderColor: palette.accent },
+  tabActive: { backgroundColor: palette.accentSoft, borderColor: palette.accent },
   tabText: { ...typeScale.small, ...trackedUpper, color: palette.textDim },
   tabTextActive: { color: palette.accent },
-  list: { padding: spacing.lg, gap: spacing.md },
+  list: { padding: spacing.lg, gap: spacing.md, maxWidth: 760, width: "100%", alignSelf: "center" },
   listRow: { gap: spacing.md },
   card: {
     flex: 1,
@@ -139,5 +219,8 @@ const styles = StyleSheet.create({
   cardMissing: { width: 90, height: 120, borderRadius: radius.sm, backgroundColor: palette.surfaceRaised },
   cardLabel: { ...typeScale.small, ...trackedUpper, color: palette.text, marginTop: spacing.sm },
   cardMeta: { ...typeScale.small, color: palette.textFaint },
-  empty: { ...typeScale.body, color: palette.textFaint, textAlign: "center", marginTop: spacing.xxl },
+  cardName: { ...typeScale.body, color: palette.text, marginTop: spacing.sm },
+  cardShared: { color: "#7FD1A8" },
+  intro: { ...typeScale.small, color: palette.textDim, textAlign: "center", marginBottom: spacing.sm },
+  empty: { ...typeScale.body, color: palette.textDim, textAlign: "center", marginTop: spacing.xxl, paddingHorizontal: spacing.lg },
 });
