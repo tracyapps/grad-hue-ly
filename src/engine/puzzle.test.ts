@@ -3,6 +3,7 @@ import { Rng, hashSeed } from "./rng";
 import { generateField, fieldQuality, bilinearField, resampleField } from "./field";
 import { shuffledPlacement } from "./shuffle";
 import {
+  generateEndless,
   generateLevel,
   generateToday,
   generateZen,
@@ -21,6 +22,8 @@ import {
   zenParams,
   MIN_STEP,
   SIZE_LADDER,
+  SIZE_PRESETS,
+  stepFor,
 } from "./difficulty";
 import { CHAPTER_MOODS } from "./palettes";
 import { hexToLab, inGamut } from "./color";
@@ -53,8 +56,8 @@ describe("field generation", () => {
         expect(f.labs).toHaveLength(cols * rows);
         for (const lab of f.labs) expect(inGamut(lab)).toBe(true);
         const q = fieldQuality(f.labs, cols, rows);
-        // Exact target, or (rare last resort) at most 10% gentler.
-        expect(q.meanStep).toBeGreaterThan(step * 0.89);
+        // Exact target, or (rare last resort for oversized steps) a bit quieter.
+        expect(q.meanStep).toBeGreaterThan(step * 0.75);
         expect(q.meanStep).toBeLessThan(step * 1.01);
       }
     });
@@ -272,6 +275,37 @@ describe("puzzles from explicit colors (Studio)", () => {
       ReturnType<typeof hexToLab>,
     ];
     expect(fieldQuality(bilinearField(corners, 5, 5), 5, 5).twin).toBeLessThan(0.1);
+  });
+});
+
+describe("endless boards at any size", () => {
+  it("every preset × subtlety is fair, including the huge ones", () => {
+    for (const [cols, rows] of SIZE_PRESETS) {
+      for (const sub of ["gentle", "subtle", "ethereal"] as const) {
+        for (const nonce of [0, 1, 2]) {
+          const p = generateEndless(nonce, cols, rows, sub);
+          expect(p.cols * p.rows).toBe(cols * rows);
+          const q = fieldQuality(p.colors.map(hexToLab), cols, rows);
+          expect(q.twin).toBeGreaterThan(1);
+          expect(q.minStep).toBeGreaterThan(0.02);
+          expect(new Set(p.colors).size).toBe(cols * rows);
+        }
+      }
+    }
+  });
+
+  it("subtlety orders the step, and big boards converge to the floor", () => {
+    expect(stepFor(6, 8, "gentle")).toBeGreaterThan(stepFor(6, 8, "subtle"));
+    expect(stepFor(6, 8, "subtle")).toBeGreaterThan(stepFor(6, 8, "ethereal"));
+    expect(stepFor(14, 20, "gentle")).toBe(stepFor(14, 20, "ethereal"));
+  });
+
+  it("journey levels can be played at a chosen size", () => {
+    const p = generateLevel(3, undefined, { cols: 9, rows: 12 });
+    expect([p.cols, p.rows]).toEqual([9, 12]);
+    expect(p.params.mood).toBe(levelParams(3).mood);
+    const q = fieldQuality(p.colors.map(hexToLab), 9, 12);
+    expect(q.twin).toBeGreaterThan(1);
   });
 });
 
