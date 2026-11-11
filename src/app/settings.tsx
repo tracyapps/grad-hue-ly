@@ -122,7 +122,7 @@ export default function Settings() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: palette.bgMenu },
+  safe: { flex: 1 },
   header: { flexDirection: "row", alignItems: "center", padding: spacing.md },
   back: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   backIcon: { color: palette.textDim, fontSize: 26 },

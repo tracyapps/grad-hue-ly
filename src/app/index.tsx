@@ -27,7 +27,7 @@ export default function Home() {
 
   return (
     <View style={styles.root}>
-      <GradientBackdrop reduceMotion={reduceMotion} />
+      <GradientBackdrop reduceMotion={reduceMotion} palette={next} variant="hero" />
       <SafeAreaView style={styles.safe} edges={["top"]}>
       <ScrollView contentContainerStyle={styles.content}>
         {/* Wordmark */}
@@ -179,7 +179,18 @@ const styles = StyleSheet.create({
   rowPair: { flexDirection: "row", gap: spacing.md },
   steppers: { flexDirection: "row", gap: spacing.sm },
   stepperText: { ...typeScale.small, color: palette.textDim, ...trackedUpper },
-  links: { flexDirection: "row", justifyContent: "center", gap: spacing.md, marginTop: spacing.sm },
+  links: {
+    flexDirection: "row",
+    justifyContent: "center",
+    alignSelf: "center",
+    gap: spacing.md,
+    marginTop: spacing.sm,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.sm,
+    borderRadius: radius.pill,
+    // a quiet scrim so the links stay legible over the living terrain
+    backgroundColor: "#17141BD9",
+  },
   link: { ...typeScale.small, ...trackedUpper, color: palette.textDim },
   linkDot: { color: palette.textFaint },
 });

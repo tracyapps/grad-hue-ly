@@ -17,6 +17,7 @@ export interface StudioGradient {
   name: string;
   kind: "image" | "corners";
   createdAt: number;
+  updatedAt?: number;
   /** Row-major hex colors, CANONICAL_COLS × CANONICAL_ROWS. */
   canonical: string[];
   /** For 'corners' sources: TL, TR, BL, BR. */
@@ -26,6 +27,8 @@ export interface StudioGradient {
 interface StudioState {
   gradients: StudioGradient[];
   add: (g: Omit<StudioGradient, "id" | "createdAt">) => string;
+  /** Edit a saved gradient in place (name, colors, source). */
+  update: (id: string, patch: Partial<Omit<StudioGradient, "id" | "createdAt">>) => void;
   remove: (id: string) => void;
 }
 
@@ -45,6 +48,12 @@ export const useStudio = create<StudioState>()(
         });
         return id;
       },
+      update: (id, patch) =>
+        set({
+          gradients: get().gradients.map((g) =>
+            g.id === id ? { ...g, ...patch, updatedAt: Date.now() } : g,
+          ),
+        }),
       remove: (id) => set({ gradients: get().gradients.filter((g) => g.id !== id) }),
     }),
     {
