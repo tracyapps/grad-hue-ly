@@ -4,6 +4,8 @@ import { SafeAreaView } from "react-native-safe-area-context";
 import { useMemo } from "react";
 import { chapterName, generateLevel } from "@/engine";
 import MiniBoard from "@/components/MiniBoard";
+import { useAccount } from "@/sync/account";
+import { accountsAvailable } from "@/sync/auth";
 import { useProfile } from "@/state/profile";
 import GradientBackdrop from "@/components/GradientBackdrop";
 import Onboarding from "@/components/play/Onboarding";
@@ -16,6 +18,8 @@ export default function Home() {
   const setOnboarded = useProfile((s) => s.setOnboarded);
   const reduceMotion = useProfile((s) => s.settings.reduceMotion);
   const worldSeed = useProfile((s) => s.worldSeed);
+  const accountStatus = useAccount((s) => s.status);
+  const syncing = useAccount((s) => s.syncing);
   const todayKey = new Date().toISOString().slice(0, 10);
   const next = useMemo(() => generateLevel(level, worldSeed), [level, worldSeed]);
   const todayDone = useProfile((s) => s.today[todayKey]?.solved ?? false);
@@ -29,6 +33,19 @@ export default function Home() {
     <View style={styles.root}>
       <GradientBackdrop reduceMotion={reduceMotion} palette={next} variant="hero" />
       <SafeAreaView style={styles.safe} edges={["top"]}>
+      {accountsAvailable() && accountStatus !== "unknown" && (
+        <Pressable
+          accessibilityRole="button"
+          accessibilityLabel={accountStatus === "signed-in" ? "Account: signed in, progress synced" : "Sign in to sync your progress"}
+          onPress={() => router.push("/settings")}
+          style={styles.accountChip}
+        >
+          <View style={[styles.accountDot, accountStatus === "signed-in" && styles.accountDotOn]} />
+          <Text style={styles.accountChipText}>
+            {accountStatus === "signed-in" ? (syncing ? "syncing" : "synced") : "sign in"}
+          </Text>
+        </Pressable>
+      )}
       <ScrollView contentContainerStyle={styles.content}>
         {/* Wordmark */}
         <View style={styles.wordmarkRow}>
@@ -122,6 +139,24 @@ export default function Home() {
 
 const styles = StyleSheet.create({
   root: { flex: 1 },
+  accountChip: {
+    position: "absolute",
+    top: spacing.md,
+    right: spacing.lg,
+    zIndex: 2,
+    flexDirection: "row",
+    alignItems: "center",
+    gap: spacing.sm,
+    paddingHorizontal: spacing.md,
+    minHeight: 36,
+    borderRadius: radius.pill,
+    backgroundColor: "#17141BD9",
+    borderWidth: 1,
+    borderColor: palette.line,
+  },
+  accountDot: { width: 7, height: 7, borderRadius: 4, backgroundColor: palette.textFaint },
+  accountDotOn: { backgroundColor: "#7FD1A8" },
+  accountChipText: { ...typeScale.small, ...trackedUpper, color: palette.textDim },
   safe: { flex: 1 },
   content: {
     flexGrow: 1,

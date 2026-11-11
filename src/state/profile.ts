@@ -80,7 +80,21 @@ export interface ProfileState {
   setLevel: (level: number) => void;
   setOnboarded: () => void;
   updateSettings: (patch: Partial<Settings>) => void;
+  /** Apply a merged copy from account sync (settings stay per-device). */
+  applySynced: (synced: Pick<ProfileState, SyncedKey>) => void;
 }
+
+/** The parts of the profile that follow the player across devices. */
+export type SyncedKey =
+  | "worldSeed"
+  | "level"
+  | "solvedCount"
+  | "totalMoves"
+  | "bestMoves"
+  | "zenNonce"
+  | "today"
+  | "gallery"
+  | "onboarded";
 
 const GALLERY_CAP = 200;
 
@@ -174,6 +188,8 @@ export const useProfile = create<ProfileState>()(
       setOnboarded: () => set({ onboarded: true }),
 
       updateSettings: (patch) => set({ settings: { ...get().settings, ...patch } }),
+
+      applySynced: (synced) => set(synced),
     }),
     {
       name: "gradhuely-profile",
