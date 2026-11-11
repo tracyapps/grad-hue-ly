@@ -11,6 +11,7 @@ import GradientBackdrop from "@/components/GradientBackdrop";
 import ScreenHeader from "@/components/ScreenHeader";
 import Logomark from "@/components/brand/Logomark";
 import Wordmark from "@/components/brand/Wordmark";
+import MadeBy from "@/components/MadeBy";
 import { palette, radius, spacing, type as typeScale, trackedUpper } from "@/theme";
 
 function Section({ title, children }: { title: string; children: ReactNode }) {
@@ -137,6 +138,11 @@ export default function About() {
             <Go label="your account" to="/account" />
           </Section>
 
+          <Section title="keep it free">
+            <P>grad[hue]ly has no ads and no paywalls. if you'd like to chip in, any amount helps.</P>
+            <Go label="support her work" to="/support" />
+          </Section>
+
           <Section title="say hi">
             <P>questions, ideas, a board you love? write to us.</P>
             <Pressable accessibilityRole="link" onPress={() => void Linking.openURL("mailto:hue@gradhuely.com")} hitSlop={6}>
@@ -144,7 +150,10 @@ export default function About() {
             </Pressable>
           </Section>
 
-          <Text style={styles.footer}>grad[hue]ly · made with care by tapps · set in Google Sans Flex</Text>
+          <View style={styles.footerWrap}>
+            <MadeBy />
+            <Text style={styles.footer}>set in Google Sans Flex</Text>
+          </View>
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -174,5 +183,6 @@ const styles = StyleSheet.create({
     overflow: "hidden",
   },
   keyText: { ...typeScale.body, color: palette.textDim, flexShrink: 1 },
-  footer: { ...typeScale.small, color: palette.textFaint, textAlign: "center", marginTop: spacing.lg },
+  footerWrap: { alignItems: "center", gap: spacing.xs, marginTop: spacing.lg },
+  footer: { ...typeScale.small, color: palette.textFaint, textAlign: "center" },
 });

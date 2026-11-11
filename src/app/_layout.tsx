@@ -48,6 +48,7 @@ export default function RootLayout() {
           <Stack.Screen name="community" />
           <Stack.Screen name="account" />
           <Stack.Screen name="about" />
+          <Stack.Screen name="support" />
           <Stack.Screen name="gallery" />
           <Stack.Screen name="stats" />
           <Stack.Screen name="settings" />

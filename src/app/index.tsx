@@ -1,4 +1,5 @@
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
+import MadeBy from "@/components/MadeBy";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import { useMemo, useState } from "react";
@@ -172,6 +173,7 @@ export default function Home() {
             </>
           )}
         </View>
+        <MadeBy />
       </ScrollView>
       </SafeAreaView>
       <BoardSheet
