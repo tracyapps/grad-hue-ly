@@ -6,5 +6,11 @@
   "outputDirectory": "dist",
   "devCommand": "npx expo start --web",
   "cleanUrls": true,
-  "rewrites": [{ "source": "/((?!api/).*)", "destination": "/" }]
+  "rewrites": [
+    {
+      "source": "/auth/:path*",
+      "destination": "https://ep-curly-dust-bd5ao033.neonauth.c-8.us-east-2.aws.neon.tech/neondb/auth/:path*"
+    },
+    { "source": "/((?!api/|auth/).*)", "destination": "/" }
+  ]
 }
