@@ -164,3 +164,12 @@ describe("profile sync", () => {
     expect((await r.json()).data).toBe(null);
   });
 });
+
+describe("auth proxy helpers", () => {
+  it("scopes cookies to our domain and maps paths", async () => {
+    process.env.NEON_AUTH_BASE_URL = "https://auth.example/neondb/auth";
+    const { firstPartyCookie } = await import("./auth-proxy");
+    expect(firstPartyCookie("s=1; Path=/; Domain=auth.example; HttpOnly; Secure")).toBe("s=1; Path=/; HttpOnly; Secure");
+    expect(firstPartyCookie("s=1; Path=/")).toBe("s=1; Path=/");
+  });
+});
