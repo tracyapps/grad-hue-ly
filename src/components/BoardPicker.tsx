@@ -57,7 +57,9 @@ function Stepper({
 }) {
   return (
     <View style={styles.stepper} accessibilityRole="adjustable" accessibilityLabel={label}
-      accessibilityValue={{ min, max, now: value }}
+      aria-valuemin={min}
+      aria-valuemax={max}
+      aria-valuenow={value}
       accessibilityActions={[{ name: "increment" }, { name: "decrement" }]}
       onAccessibilityAction={(e) =>
         onChange(e.nativeEvent.actionName === "increment" ? Math.min(max, value + 1) : Math.max(min, value - 1))
@@ -155,7 +157,7 @@ export default function BoardPicker({
             <Pressable
               key={`${c}x${r}`}
               accessibilityRole="radio"
-              accessibilityState={{ checked: on }}
+              aria-checked={on}
               accessibilityLabel={`${c} by ${r}, ${c * r} tiles`}
               onPress={() => set(c, r)}
               style={[styles.chip, on && styles.chipOn]}
@@ -187,12 +189,12 @@ export default function BoardPicker({
           <View style={styles.chips}>
             {SUBTLETIES.map((s, i) => {
               const on = (value.subtlety ?? "subtle") === s.id;
-              const redundant = i > 0 && sameSteps[i] === sameSteps[i - 1];
+              const redundant = i > 0 && Math.abs(sameSteps[i] - sameSteps[i - 1]) < 0.0015;
               return (
                 <Pressable
                   key={s.id}
                   accessibilityRole="radio"
-                  accessibilityState={{ checked: on, disabled: redundant && !on }}
+                  aria-checked={on} aria-disabled={redundant && !on}
                   disabled={redundant && !on}
                   onPress={() => set(cols, rows, s.id)}
                   style={[styles.chip, styles.chipWide, on && styles.chipOn, redundant && !on && styles.dim]}
@@ -202,7 +204,7 @@ export default function BoardPicker({
               );
             })}
           </View>
-          {sameSteps[0] === sameSteps[2] && (
+          {Math.abs(sameSteps[0] - sameSteps[2]) < 0.0015 && (
             <Text style={styles.note}>at this size every board is already a whisper</Text>
           )}
         </>

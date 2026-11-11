@@ -129,6 +129,6 @@ const styles = StyleSheet.create({
     paddingVertical: 15,
     paddingHorizontal: spacing.xxl,
   },
-  beginText: { ...typeScale.label, ...trackedUpper, color: "#1D1208" },
+  beginText: { ...typeScale.label, ...trackedUpper, color: palette.onAccent },
   skip: { ...typeScale.small, color: palette.textDim },
 });

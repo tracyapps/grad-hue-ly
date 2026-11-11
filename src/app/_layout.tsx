@@ -12,6 +12,9 @@ import { SafeAreaProvider } from "react-native-safe-area-context";
 import { useEffect } from "react";
 import { font, palette } from "@/theme";
 import { startAccountSync } from "@/sync/account";
+import { installWebHead } from "@/lib/webHead";
+
+installWebHead();
 
 export default function RootLayout() {
   const [loaded] = useFonts({
@@ -43,6 +46,8 @@ export default function RootLayout() {
           <Stack.Screen name="zen" />
           <Stack.Screen name="endless" />
           <Stack.Screen name="community" />
+          <Stack.Screen name="account" />
+          <Stack.Screen name="about" />
           <Stack.Screen name="gallery" />
           <Stack.Screen name="stats" />
           <Stack.Screen name="settings" />

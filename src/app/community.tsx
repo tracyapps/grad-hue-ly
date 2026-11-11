@@ -9,6 +9,7 @@ import { ActivityIndicator, FlatList, Pressable, StyleSheet, Text, useWindowDime
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import GradientBackdrop from "@/components/GradientBackdrop";
+import ScreenHeader from "@/components/ScreenHeader";
 import MiniBoard from "@/components/MiniBoard";
 import BoardSheet from "@/components/BoardSheet";
 import type { BoardChoice } from "@/components/BoardPicker";
@@ -83,13 +84,7 @@ export default function Community() {
     <View style={{ flex: 1 }}>
       <GradientBackdrop />
       <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
-        <View style={styles.header}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Back" hitSlop={12} onPress={() => router.back()} style={styles.back}>
-            <Text style={styles.backIcon}>‹</Text>
-          </Pressable>
-          <Text style={styles.title} accessibilityRole="header">community</Text>
-          <View style={styles.back} />
-        </View>
+        <ScreenHeader title="community" />
 
         <View style={styles.toolbar}>
           <View style={styles.tabs} accessibilityRole="tablist">
@@ -97,7 +92,7 @@ export default function Community() {
               <Pressable
                 key={s}
                 accessibilityRole="tab"
-                accessibilityState={{ selected: sort === s }}
+                aria-selected={sort === s}
                 onPress={() => void load(s)}
                 style={[styles.tab, sort === s && styles.tabOn]}
               >

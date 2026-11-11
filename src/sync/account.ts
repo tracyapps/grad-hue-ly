@@ -32,6 +32,8 @@ interface AccountState {
   loadUsername: () => Promise<void>;
   /** Returns an error message, or null on success. */
   setUsername: (name: string) => Promise<string | null>;
+  /** Erase everything stored for this account on our server, then sign out. */
+  deleteData: () => Promise<string | null>;
 }
 
 const SYNCED: SyncedKey[] = [
@@ -138,6 +140,16 @@ export const useAccount = create<AccountState>()((set, get) => ({
       set({ username });
     } catch {
       /* offline: try again next time */
+    }
+  },
+
+  deleteData: async () => {
+    try {
+      await api("/api/me", { method: "DELETE", auth: true });
+      await get().signOut();
+      return null;
+    } catch (e) {
+      return explain(e instanceof ApiError ? e.code : "");
     }
   },
 

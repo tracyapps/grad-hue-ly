@@ -1,7 +1,14 @@
 /**
  * Design tokens. gradhuely is dark-forward: near-black boards let the
  * gradients carry all the color, while menus stay quiet and modern.
+ *
+ * Type: Google Sans Flex (variable) on the web — bold, slightly rounded
+ * headlines (ROND 15, 650–720) over light-to-regular, unrounded body text
+ * (ROND 0, ~340). Native builds fall back to Outfit until the font ships
+ * in the app bundle.
  */
+
+import { Platform, type TextStyle } from "react-native";
 
 export const palette = {
   /** Gameplay backdrop — matches the near-black of the original. */
@@ -16,9 +23,11 @@ export const palette = {
   textDim: "#ABA4AF",
   /** Quietest text — still ≥ 4.5:1 on every surface (WCAG AA). */
   textFaint: "#958E9C",
-  /** Accent — soft coral, echoing the original's warmth. */
-  accent: "#E08E6D",
-  accentSoft: "#E08E6D33",
+  /** Accent — the brand's rose (≥ 6:1 on every surface; dark text on it 7.5:1). */
+  accent: "#FF7A8C",
+  accentSoft: "#FF7A8C2E",
+  /** Text on accent-filled buttons. */
+  onAccent: "#1A0F14",
   /** Hairlines. */
   line: "#FFFFFF14",
   /** Locked anchor marker dot. */
@@ -49,20 +58,54 @@ export const font = {
   bold: "Outfit-Bold",
 } as const;
 
-export const type = {
-  /** Big display numerals/titles. */
-  display: { fontSize: 34, lineHeight: 40, fontFamily: font.bold },
-  title: { fontSize: 24, lineHeight: 30, fontFamily: font.bold },
-  heading: { fontSize: 17, lineHeight: 22, fontFamily: font.semiBold },
-  body: { fontSize: 15, lineHeight: 21, fontFamily: font.regular },
-  label: { fontSize: 13, lineHeight: 18, fontFamily: font.semiBold },
-  small: { fontSize: 11, lineHeight: 15, fontFamily: font.medium },
+/** The brand signature gradient (from the identity palette). */
+export const brand = {
+  violet: "#9264EF",
+  orchid: "#F674D0",
+  rose: "#FF687E",
+  amber: "#FFC43D",
+  /** The [hue] treatment: orchid → rose → amber. */
+  hue: ["#F674D0", "#FF687E", "#FFC43D"] as const,
 } as const;
 
-/** Chapter labels etc. — the letter-spaced uppercase from the originals. */
+const WEB = Platform.OS === "web";
+export const FLEX_FAMILY = '"Google Sans Flex", "Outfit", system-ui, -apple-system, sans-serif';
+
+/**
+ * A Google Sans Flex face: any weight 1–1000 and roundness 0–100 (web).
+ * On native it falls back to the nearest Outfit cut.
+ */
+export function face(weight: number, round = 0): TextStyle {
+  if (WEB) {
+    return {
+      fontFamily: FLEX_FAMILY,
+      fontWeight: String(Math.round(weight)) as TextStyle["fontWeight"],
+      // react-native-web passes this straight through to CSS
+      ...({ fontVariationSettings: `"ROND" ${round}, "slnt" 0` } as object),
+    };
+  }
+  const cut = weight >= 650 ? font.bold : weight >= 540 ? font.semiBold : weight >= 440 ? font.medium : font.regular;
+  return { fontFamily: cut };
+}
+
+export const type = {
+  /** Big display numerals/titles. */
+  display: { fontSize: 34, lineHeight: 40, ...face(720, 15) },
+  title: { fontSize: 24, lineHeight: 30, ...face(690, 15) },
+  heading: { fontSize: 17, lineHeight: 22, ...face(640, 15) },
+  body: { fontSize: 15, lineHeight: 22, ...face(340, 0) },
+  label: { fontSize: 13, lineHeight: 18, ...face(620, 15) },
+  small: { fontSize: 12, lineHeight: 16, ...face(400, 0) },
+} as const;
+
+/**
+ * Chapter labels, buttons, kickers — letter-spaced uppercase. Tiny caps need
+ * more weight than body text to stay legible, so this also sets the face.
+ */
 export const trackedUpper = {
   textTransform: "uppercase",
-  letterSpacing: 2.4,
+  letterSpacing: 2.2,
+  ...face(600, 15),
 } as const;
 
 /** Default tile spring — the feel of the whole game lives here. */

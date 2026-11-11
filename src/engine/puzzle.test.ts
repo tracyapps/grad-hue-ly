@@ -297,7 +297,10 @@ describe("endless boards at any size", () => {
   it("subtlety orders the step, and big boards converge to the floor", () => {
     expect(stepFor(6, 8, "gentle")).toBeGreaterThan(stepFor(6, 8, "subtle"));
     expect(stepFor(6, 8, "subtle")).toBeGreaterThan(stepFor(6, 8, "ethereal"));
-    expect(stepFor(14, 20, "gentle")).toBe(stepFor(14, 20, "ethereal"));
+    // big boards keep three distinct choices up to 18 on a side
+    expect(stepFor(10, 14, "gentle")).toBeGreaterThan(stepFor(10, 14, "subtle"));
+    expect(stepFor(12, 16, "subtle")).toBeGreaterThan(stepFor(12, 16, "ethereal"));
+    expect(stepFor(14, 20, "gentle") - stepFor(14, 20, "ethereal")).toBeLessThan(0.0015);
   });
 
   it("journey levels can be played at a chosen size", () => {

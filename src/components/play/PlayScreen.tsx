@@ -26,7 +26,7 @@ import {
 import { useProfile } from "@/state/profile";
 import { hapticDrop, hapticSolve } from "@/lib/haptics";
 import { playSound } from "@/lib/sound";
-import { palette, radius, spacing, type as typeScale, trackedUpper } from "@/theme";
+import { face, palette, radius, spacing, type as typeScale, trackedUpper } from "@/theme";
 
 export type PlayKind = "level" | "today" | "zen" | "studio" | "community";
 
@@ -408,7 +408,7 @@ const styles = StyleSheet.create({
   sheetBoardName: { ...typeScale.body, color: palette.textDim, marginTop: -8, textAlign: "center" },
   sheetKicker: { ...typeScale.label, ...trackedUpper, color: palette.accent },
   sheetMoves: { ...typeScale.display, color: palette.text, fontVariant: ["tabular-nums"] },
-  sheetMovesUnit: { fontSize: 16, color: palette.textDim, fontWeight: "400" },
+  sheetMovesUnit: { fontSize: 16, color: palette.textDim, ...face(340) },
   primaryButton: {
     backgroundColor: palette.accent,
     paddingVertical: 14,
@@ -418,7 +418,7 @@ const styles = StyleSheet.create({
   primaryButtonText: {
     ...typeScale.label,
     ...trackedUpper,
-    color: "#1D1208",
+    color: palette.onAccent,
   },
   sheetButtons: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap", justifyContent: "center", marginTop: spacing.xs },
   secondaryButton: {

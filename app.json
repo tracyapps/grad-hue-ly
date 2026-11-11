@@ -1,6 +1,6 @@
 {
   "expo": {
-    "name": "gradhuely",
+    "name": "grad[hue]ly",
     "slug": "gradhuely",
     "version": "1.0.0",
     "orientation": "portrait",
@@ -12,7 +12,7 @@
     },
     "android": {
       "adaptiveIcon": {
-        "backgroundColor": "#E6F4FE",
+        "backgroundColor": "#101114",
         "foregroundImage": "./assets/images/android-icon-foreground.png",
         "backgroundImage": "./assets/images/android-icon-background.png",
         "monochromeImage": "./assets/images/android-icon-monochrome.png"
@@ -21,16 +21,18 @@
     },
     "web": {
       "output": "single",
-      "favicon": "./assets/images/favicon.png"
+      "favicon": "./assets/images/favicon.png",
+      "backgroundColor": "#141118",
+      "themeColor": "#141118"
     },
     "plugins": [
       "expo-router",
       [
         "expo-splash-screen",
         {
-          "backgroundColor": "#208AEF",
+          "backgroundColor": "#101114",
           "image": "./assets/images/splash-icon.png",
-          "imageWidth": 76
+          "imageWidth": 120
         }
       ]
     ],

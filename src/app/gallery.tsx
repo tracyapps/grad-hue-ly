@@ -5,6 +5,7 @@ import MiniBoard from "@/components/MiniBoard";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import GradientBackdrop from "@/components/GradientBackdrop";
+import ScreenHeader from "@/components/ScreenHeader";
 import { chapterName, generateEndless, generateLevel, generateToday, generateZen, quantizeField } from "@/engine";
 import { useCommunity } from "@/sync/community";
 import { parseGrid, useProfile, type GalleryItem } from "@/state/profile";
@@ -82,13 +83,7 @@ export default function Gallery() {
     <View style={{ flex: 1 }}>
       <GradientBackdrop />
       <SafeAreaView style={styles.safe} edges={["top"]}>
-        <View style={styles.header}>
-          <Pressable accessibilityRole="button" hitSlop={12} accessibilityLabel="Back" onPress={() => router.back()} style={styles.back}>
-            <Text style={styles.backIcon}>‹</Text>
-          </Pressable>
-          <Text style={styles.title}>gallery</Text>
-          <View style={styles.back} />
-        </View>
+        <ScreenHeader title="gallery" />
 
         <View style={styles.tabs}>
           {(["all", "level", "zen", "community", "today", "studio"] as const).map((t) => (

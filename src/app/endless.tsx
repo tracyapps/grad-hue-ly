@@ -8,6 +8,7 @@ import { Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import GradientBackdrop from "@/components/GradientBackdrop";
+import ScreenHeader from "@/components/ScreenHeader";
 import BoardPicker, { type BoardChoice } from "@/components/BoardPicker";
 import { generateEndless } from "@/engine";
 import { useProfile } from "@/state/profile";
@@ -47,13 +48,7 @@ export default function Endless() {
     <View style={{ flex: 1 }}>
       <GradientBackdrop />
       <SafeAreaView style={{ flex: 1 }} edges={["top"]}>
-        <View style={styles.header}>
-          <Pressable accessibilityRole="button" accessibilityLabel="Back" hitSlop={12} onPress={() => router.back()} style={styles.back}>
-            <Text style={styles.backIcon}>‹</Text>
-          </Pressable>
-          <Text style={styles.title} accessibilityRole="header">endless</Text>
-          <View style={styles.back} />
-        </View>
+        <ScreenHeader title="endless" />
         <ScrollView contentContainerStyle={styles.content}>
           <Text style={styles.subtitle}>
             no levels to grind through — choose the board you love and play new gradients forever.
@@ -98,5 +93,5 @@ const styles = StyleSheet.create({
   peek: { alignSelf: "center", paddingVertical: spacing.sm, paddingHorizontal: spacing.lg, minHeight: 40, justifyContent: "center" },
   peekText: { ...typeScale.small, ...trackedUpper, color: palette.textDim },
   begin: { backgroundColor: palette.accent, borderRadius: radius.pill, paddingVertical: 15, alignItems: "center" },
-  beginText: { ...typeScale.label, ...trackedUpper, color: "#1D1208" },
+  beginText: { ...typeScale.label, ...trackedUpper, color: palette.onAccent },
 });

@@ -36,7 +36,7 @@ export default function UsernamePrompt({
   return (
     <Modal visible={visible} transparent animationType="fade" onRequestClose={() => onDone(false)}>
       <View style={styles.backdrop}>
-        <View style={styles.sheet} accessibilityViewIsModal>
+        <View style={styles.sheet} aria-modal>
           <Text style={styles.title} accessibilityRole="header">
             {current ? "change your username" : "pick a username"}
           </Text>
@@ -71,7 +71,7 @@ export default function UsernamePrompt({
               style={[styles.primary, (busy || value.length < 3) && styles.dim]}
               onPress={() => void save()}
             >
-              {busy ? <ActivityIndicator color="#1D1208" /> : <Text style={styles.primaryText}>save</Text>}
+              {busy ? <ActivityIndicator color={palette.onAccent} /> : <Text style={styles.primaryText}>save</Text>}
             </Pressable>
             <Pressable accessibilityRole="button" style={styles.ghost} onPress={() => onDone(false)}>
               <Text style={styles.ghostText}>cancel</Text>
@@ -102,7 +102,7 @@ const styles = StyleSheet.create({
   error: { ...typeScale.small, color: palette.accent },
   row: { flexDirection: "row", gap: spacing.sm },
   primary: { backgroundColor: palette.accent, borderRadius: radius.pill, paddingHorizontal: spacing.xl, minHeight: 44, justifyContent: "center" },
-  primaryText: { ...typeScale.label, ...trackedUpper, color: "#1D1208" },
+  primaryText: { ...typeScale.label, ...trackedUpper, color: palette.onAccent },
   dim: { opacity: 0.5 },
   ghost: { borderWidth: 1, borderColor: palette.line, borderRadius: radius.pill, paddingHorizontal: spacing.lg, minHeight: 44, justifyContent: "center" },
   ghostText: { ...typeScale.small, ...trackedUpper, color: palette.textDim },

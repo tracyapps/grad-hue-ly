@@ -39,7 +39,7 @@ export default function BoardSheet({
     <Modal visible={visible} transparent animationType="fade" onRequestClose={onClose}>
       <View style={styles.backdrop}>
         <Pressable style={StyleSheet.absoluteFill} onPress={onClose} accessibilityLabel="Close" />
-        <View style={styles.sheet} accessibilityViewIsModal>
+        <View style={styles.sheet} aria-modal>
           <ScrollView contentContainerStyle={styles.content} keyboardShouldPersistTaps="handled">
             <View style={styles.header}>
               <View style={{ flex: 1 }}>
@@ -107,5 +107,5 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: spacing.md,
   },
-  playText: { ...typeScale.label, ...trackedUpper, color: "#1D1208" },
+  playText: { ...typeScale.label, ...trackedUpper, color: palette.onAccent },
 });

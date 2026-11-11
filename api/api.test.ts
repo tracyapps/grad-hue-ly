@@ -170,6 +170,21 @@ describe("community boards", () => {
   });
 });
 
+describe("delete my data", () => {
+  it("erases profile, @name and shared boards for that user only", async () => {
+    await me.PUT(await req("PUT", "/api/me", { user: "u1", body: { username: "leaving" } }));
+    await me.PUT(await req("PUT", "/api/me", { user: "u2", body: { username: "staying" } }));
+    await boards.POST(await req("POST", "/api/boards", { user: "u1", body: { name: "bye", kind: "corners", corners: CORNERS } }));
+    await profile.PUT(await req("PUT", "/api/profile", { user: "u1", body: { data: { v: 1 } } }));
+    const r = await me.DELETE(await req("DELETE", "/api/me", { user: "u1" }));
+    expect(r.status).toBe(200);
+    expect((await (await me.GET(await req("GET", "/api/me", { user: "u1" }))).json()).username).toBe(null);
+    expect((await (await me.GET(await req("GET", "/api/me", { user: "u2" }))).json()).username).toBe("staying");
+    expect((await (await boards.GET(await req("GET", "/api/boards"))).json()).boards).toHaveLength(0);
+    expect((await (await profile.GET(await req("GET", "/api/profile", { user: "u1" }))).json()).data).toBe(null);
+  });
+});
+
 describe("profile sync", () => {
   it("stores one snapshot per user, isolated", async () => {
     let r = await profile.GET(await req("GET", "/api/profile", { user: "u1" }));

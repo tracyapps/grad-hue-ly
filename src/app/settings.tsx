@@ -1,10 +1,11 @@
-import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import GradientBackdrop from "@/components/GradientBackdrop";
-import AccountPanel from "@/components/AccountPanel";
+import ScreenHeader from "@/components/ScreenHeader";
+import { useAccount } from "@/sync/account";
 import { useProfile } from "@/state/profile";
-import { font, palette, radius, spacing, type as typeScale, trackedUpper } from "@/theme";
+import { face, palette, radius, spacing, type as typeScale, trackedUpper } from "@/theme";
 
 function Toggle({
   label,
@@ -17,37 +18,38 @@ function Toggle({
   value: boolean;
   onChange: (v: boolean) => void;
 }) {
+  // The whole row is the switch: a big, forgiving target with one name.
   return (
-    <View style={styles.toggleRow}>
+    <Pressable
+      accessibilityRole="switch"
+      aria-checked={value}
+      accessibilityLabel={`${label}. ${hint}`}
+      onPress={() => onChange(!value)}
+      style={({ pressed }) => [styles.toggleRow, pressed && { opacity: 0.85 }]}
+    >
       <View style={styles.toggleText}>
         <Text style={styles.toggleLabel}>{label}</Text>
         <Text style={styles.toggleHint}>{hint}</Text>
       </View>
-      <Switch
-        value={value}
-        onValueChange={onChange}
-        trackColor={{ true: palette.accent, false: palette.surfaceRaised }}
-        thumbColor="#ECE7E1"
-      />
-    </View>
+      {/* drawn switch (decorative — the row carries the role and state) */}
+      <View pointerEvents="none" style={[styles.track, value && styles.trackOn]}>
+        <View style={[styles.thumb, value && styles.thumbOn]} />
+      </View>
+    </Pressable>
   );
 }
 
 export default function Settings() {
   const settings = useProfile((s) => s.settings);
   const updateSettings = useProfile((s) => s.updateSettings);
+  const signedIn = useAccount((s) => s.status === "signed-in");
+  const username = useAccount((s) => s.username);
 
   return (
     <View style={{ flex: 1 }}>
       <GradientBackdrop />
       <SafeAreaView style={styles.safe} edges={["top"]}>
-      <View style={styles.header}>
-        <Pressable accessibilityRole="button" hitSlop={12} accessibilityLabel="Back" onPress={() => router.back()} style={styles.back}>
-          <Text style={styles.backIcon}>‹</Text>
-        </Pressable>
-        <Text style={styles.title}>settings</Text>
-        <View style={styles.back} />
-      </View>
+      <ScreenHeader title="settings" />
 
       <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.group}>
@@ -84,7 +86,29 @@ export default function Settings() {
         </View>
 
         <Text style={styles.sectionLabel}>account</Text>
-        <AccountPanel />
+        <View style={styles.group}>
+          <Pressable
+            accessibilityRole="link"
+            style={styles.studioRow}
+            onPress={() => router.push("/account")}
+            accessibilityLabel={signedIn ? `Account: signed in${username ? ` as ${username}` : ""}` : "Sign in or create an account"}
+          >
+            <View style={styles.toggleText}>
+              <Text style={styles.toggleLabel}>{signedIn ? (username ? `@${username}` : "your account") : "sign in or join"}</Text>
+              <Text style={styles.toggleHint}>
+                {signedIn ? "profile, sync, your shared boards" : "sync progress across your devices · share boards"}
+              </Text>
+            </View>
+            <Text style={styles.chevron}>›</Text>
+          </Pressable>
+          <Pressable accessibilityRole="link" style={styles.studioRow} onPress={() => router.push("/about")}>
+            <View style={styles.toggleText}>
+              <Text style={styles.toggleLabel}>about grad[hue]ly</Text>
+              <Text style={styles.toggleHint}>how to play, accessibility, your data</Text>
+            </View>
+            <Text style={styles.chevron}>›</Text>
+          </Pressable>
+        </View>
 
         {Platform.OS === "web" && (
           <>
@@ -133,9 +157,22 @@ const styles = StyleSheet.create({
     padding: spacing.lg,
     gap: spacing.md,
   },
-  toggleRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
+  track: {
+    width: 46,
+    height: 28,
+    borderRadius: 14,
+    padding: 3,
+    backgroundColor: palette.surfaceRaised,
+    borderWidth: 1,
+    borderColor: "#FFFFFF22",
+    justifyContent: "center",
+  },
+  trackOn: { backgroundColor: palette.accent, borderColor: palette.accent },
+  thumb: { width: 20, height: 20, borderRadius: 10, backgroundColor: "#ECE7E1" },
+  thumbOn: { transform: [{ translateX: 18 }], backgroundColor: palette.onAccent },
+  toggleRow: { flexDirection: "row", alignItems: "center", gap: spacing.md, minHeight: 48, borderRadius: radius.md },
   toggleText: { flex: 1, gap: 2 },
-  toggleLabel: { ...typeScale.body, color: palette.text, fontFamily: font.semiBold },
+  toggleLabel: { ...typeScale.body, color: palette.text, ...face(560, 10) },
   toggleHint: { ...typeScale.small, color: palette.textFaint },
   soon: { ...typeScale.small, ...trackedUpper, color: palette.textFaint },
   studioRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },

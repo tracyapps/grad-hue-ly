@@ -6,12 +6,14 @@ import BoardSheet from "@/components/BoardSheet";
 import type { BoardChoice } from "@/components/BoardPicker";
 import { chapterName, generateLevel } from "@/engine";
 import MiniBoard from "@/components/MiniBoard";
+import Logomark from "@/components/brand/Logomark";
+import Wordmark from "@/components/brand/Wordmark";
 import { useAccount } from "@/sync/account";
 import { accountsAvailable } from "@/sync/auth";
 import { useProfile } from "@/state/profile";
 import GradientBackdrop from "@/components/GradientBackdrop";
 import Onboarding from "@/components/play/Onboarding";
-import { font, palette, radius, spacing, type as typeScale, trackedUpper } from "@/theme";
+import { face, font, palette, radius, spacing, type as typeScale, trackedUpper } from "@/theme";
 
 export default function Home() {
   const level = useProfile((s) => s.level);
@@ -22,6 +24,7 @@ export default function Home() {
   const worldSeed = useProfile((s) => s.worldSeed);
   const accountStatus = useAccount((s) => s.status);
   const syncing = useAccount((s) => s.syncing);
+  const username = useAccount((s) => s.username);
   const todayKey = new Date().toISOString().slice(0, 10);
   const journeySize = useProfile((s) => s.settings.journeySize);
   const endless = useProfile((s) => s.settings.endless);
@@ -52,21 +55,20 @@ export default function Home() {
         <Pressable
           accessibilityRole="button"
           accessibilityLabel={accountStatus === "signed-in" ? "Account: signed in, progress synced" : "Sign in to sync your progress"}
-          onPress={() => router.push("/settings")}
+          onPress={() => router.push("/account")}
           style={styles.accountChip}
         >
           <View style={[styles.accountDot, accountStatus === "signed-in" && styles.accountDotOn]} />
           <Text style={styles.accountChipText}>
-            {accountStatus === "signed-in" ? (syncing ? "syncing" : "synced") : "sign in"}
+            {accountStatus === "signed-in" ? (syncing ? "syncing" : username ? `@${username}` : "synced") : "sign in"}
           </Text>
         </Pressable>
       )}
       <ScrollView contentContainerStyle={styles.content}>
         {/* Wordmark */}
         <View style={styles.wordmarkRow}>
-          <Text style={styles.wordmark}>grad</Text>
-          <Text style={[styles.wordmark, styles.wordmarkHue]}>[hue]</Text>
-          <Text style={styles.wordmark}>ly</Text>
+          <Logomark size={52} label="" />
+          <Wordmark size={46} />
         </View>
         <Text style={styles.tagline}>endless gradients, at your pace</Text>
 
@@ -153,17 +155,17 @@ export default function Home() {
           <Pressable accessibilityRole="button" onPress={() => router.push("/gallery")}>
             <Text style={styles.link}>gallery</Text>
           </Pressable>
-          <Text style={styles.linkDot}>·</Text>
           <Pressable accessibilityRole="button" onPress={() => router.push("/stats")}>
             <Text style={styles.link}>stats</Text>
           </Pressable>
-          <Text style={styles.linkDot}>·</Text>
           <Pressable accessibilityRole="button" onPress={() => router.push("/settings")}>
             <Text style={styles.link}>settings</Text>
           </Pressable>
+          <Pressable accessibilityRole="button" onPress={() => router.push("/about")}>
+            <Text style={styles.link}>about</Text>
+          </Pressable>
           {Platform.OS === "web" && (
             <>
-              <Text style={styles.linkDot}>·</Text>
               <Pressable accessibilityRole="button" onPress={() => router.push("/studio")}>
                 <Text style={styles.link}>studio</Text>
               </Pressable>
@@ -235,7 +237,7 @@ const styles = StyleSheet.create({
     width: "100%",
     alignSelf: "center",
   },
-  wordmarkRow: { flexDirection: "row", justifyContent: "center" },
+  wordmarkRow: { flexDirection: "row", justifyContent: "center", alignItems: "center", gap: 14 },
   wordmark: {
     ...typeScale.display,
     color: palette.text,
@@ -289,7 +291,7 @@ const styles = StyleSheet.create({
     borderWidth: 1,
     borderColor: palette.line,
   },
-  sizeChipText: { ...typeScale.small, ...trackedUpper, color: palette.textDim },
+  sizeChipText: { ...typeScale.small, color: palette.textDim, ...face(560, 10) },
   growButton: { alignItems: "center", paddingVertical: spacing.md },
   growText: { ...typeScale.small, ...trackedUpper, color: palette.textDim },
   cardTitleSmall: { ...typeScale.body, color: palette.textDim, marginTop: 2 },
@@ -298,16 +300,19 @@ const styles = StyleSheet.create({
   stepperText: { ...typeScale.small, color: palette.textDim, ...trackedUpper },
   links: {
     flexDirection: "row",
+    flexWrap: "wrap",
     justifyContent: "center",
     alignSelf: "center",
-    gap: spacing.md,
+    columnGap: spacing.lg,
+    rowGap: 0,
     marginTop: spacing.sm,
     paddingHorizontal: spacing.lg,
-    paddingVertical: spacing.sm,
+    paddingVertical: 0,
     borderRadius: radius.pill,
     // a quiet scrim so the links stay legible over the living terrain
     backgroundColor: "#17141BD9",
   },
-  link: { ...typeScale.small, ...trackedUpper, color: palette.textDim },
+  // padded so every link is a comfortable ≥ 40px target
+  link: { ...typeScale.small, ...trackedUpper, color: palette.textDim, paddingVertical: 12, paddingHorizontal: 2 },
   linkDot: { color: palette.textFaint },
 });

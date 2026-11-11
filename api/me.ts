@@ -1,6 +1,8 @@
 /**
  * GET /api/me → { username } (null until chosen)
  * PUT /api/me { username } → claim or change your public @name
+ * DELETE /api/me → erase everything we store for you (progress, @name,
+ *                  shared boards). Your sign-in record lives in Neon Auth.
  */
 
 import { userIdFrom } from "./_lib/auth";
@@ -41,6 +43,20 @@ export async function PUT(request: Request): Promise<Response> {
     // a race on the unique index lands here
     if (String((e as { code?: string }).code) === "23505") return json(request, { error: "username_taken" }, 409);
     console.error("me PUT failed", e);
+    return json(request, { error: "server_error" }, 500);
+  }
+}
+
+export async function DELETE(request: Request): Promise<Response> {
+  const userId = await userIdFrom(request);
+  if (!userId) return json(request, { error: "unauthorized" }, 401);
+  try {
+    await sql`delete from boards where author_id = ${userId}`;
+    await sql`delete from players where user_id = ${userId}`;
+    await sql`delete from profiles where user_id = ${userId}`;
+    return json(request, { ok: true });
+  } catch (e) {
+    console.error("me DELETE failed", e);
     return json(request, { error: "server_error" }, 500);
   }
 }

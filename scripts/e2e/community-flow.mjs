@@ -18,15 +18,13 @@ const step = (s) => console.log("•", s);
 const tileCount = () => p.locator('[data-testid^="tile-"]').count();
 
 // 1. sign in + username
-await p.goto(`${BASE}/settings`); await p.waitForTimeout(1500);
+await p.goto(`${BASE}/account`); await p.waitForTimeout(1500);
 await p.getByLabel("Email address").fill("tapps@example.com");
 await btn("email me a code").click();
-await p.getByLabel("6-digit code").fill("123456");
-await btn("sign in", true).click();
-await p.waitForSelector("text=signed in", { timeout: 8000 }); step("signed in");
-await btn("pick one").click();
-await p.getByLabel("Username").fill("painter");
-await btn("save", true).click();
+await p.getByLabel("6-digit code").fill("123456"); // auto-submits at 6 digits
+await p.waitForSelector("text=one more thing", { timeout: 8000 }); step("signed in → name step");
+await p.getByLabel("Community name").fill("painter");
+await btn("save my name").click();
 await p.waitForSelector("text=@painter", { timeout: 8000 }); step("username @painter");
 await p.screenshot({ path: `${out}/1-settings.png` });
 

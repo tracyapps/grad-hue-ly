@@ -1,0 +1,2 @@
+/** The "solved" logomark: a 6×6 board in the signature gradient (from _design). */
+export const MARK_COLORS: readonly string[] = ["#9264EF", "#B16EE0", "#C172DB", "#D076D6", "#DF79D0", "#F674D0", "#B36FD3", "#BF75CF", "#CB7ACA", "#D880C5", "#E585BF", "#F28ABA", "#C472C2", "#CD7ABD", "#D781B8", "#E089B3", "#EA90AD", "#F597A7", "#D473AF", "#DB7DAB", "#E287A5", "#E990A0", "#F09A99", "#F8A392", "#E6749C", "#EA8097", "#EE8C91", "#F2978A", "#F7A383", "#FBAE7A", "#FF687E", "#F98280", "#FB9079", "#FC9E71", "#FDAB67", "#FFC43D"];

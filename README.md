@@ -61,6 +61,15 @@ npx tsx scripts/e2e/integration-server.mts dist-e2e &
 node scripts/e2e/community-flow.mjs
 ```
 
+## Brand & type
+
+- Google Sans Flex (variable) on the web: headlines ~650–720 weight with ROND 15,
+  body ~340 with ROND 0 — see `face()` in `src/theme.ts`. Native falls back to Outfit.
+- Logomark "solved" (`src/components/brand/Logomark.tsx`) and the wordmark with the
+  animated `[hue]` gradient (`Wordmark.tsx`) — both stop cycling under reduce motion.
+- `scripts/web-postbuild.mjs` bakes title, social cards, icons and the font link into
+  `dist/index.html`; static files live in `public/` (og-image, icons).
+
 ## Controls
 
 Drag a tile onto another, **or** tap two tiles, **or** (web) use the arrow keys

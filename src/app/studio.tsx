@@ -14,6 +14,7 @@ import { createPortal } from "react-dom";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import GradientBackdrop from "@/components/GradientBackdrop";
+import ScreenHeader from "@/components/ScreenHeader";
 import {
   bilinearField,
   fieldQuality,
@@ -493,13 +494,7 @@ function StudioWeb() {
     <View style={{ flex: 1 }}>
       <GradientBackdrop />
       <SafeAreaView style={styles.safe} edges={["top"]}>
-        <View style={styles.header}>
-          <Pressable accessibilityRole="button" hitSlop={12} accessibilityLabel="Back" onPress={() => router.back()} style={styles.back}>
-            <Text style={styles.backIcon}>‹</Text>
-          </Pressable>
-          <Text style={styles.title}>studio</Text>
-          <View style={styles.back} />
-        </View>
+        <ScreenHeader title="studio" />
 
         <ScrollView contentContainerStyle={styles.content}>
           <View onLayout={onMeasure} collapsable={false} />
@@ -649,7 +644,7 @@ function StudioWeb() {
                 <Pressable
                   key={v}
                   accessibilityRole="radio"
-                  accessibilityState={{ checked: libraryView === v }}
+                  aria-checked={libraryView === v}
                   onPress={() => setLibraryView(v)}
                   style={[styles.viewChip, libraryView === v && styles.viewChipActive]}
                 >
@@ -901,7 +896,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     marginTop: spacing.sm,
   },
-  saveButtonText: { ...typeScale.label, ...trackedUpper, color: "#1D1208" },
+  saveButtonText: { ...typeScale.label, ...trackedUpper, color: palette.onAccent },
   savedNote: { ...typeScale.small, color: palette.textFaint, textAlign: "center" },
   empty: { ...typeScale.body, color: palette.textFaint },
   libraryRow: {

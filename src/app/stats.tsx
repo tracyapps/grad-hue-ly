@@ -2,6 +2,7 @@ import { Pressable, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import GradientBackdrop from "@/components/GradientBackdrop";
+import ScreenHeader from "@/components/ScreenHeader";
 import { chapterName } from "@/engine";
 import { useProfile } from "@/state/profile";
 import { palette, radius, spacing, type as typeScale, trackedUpper } from "@/theme";
@@ -27,13 +28,7 @@ export default function Stats() {
     <View style={{ flex: 1 }}>
       <GradientBackdrop />
       <SafeAreaView style={styles.safe} edges={["top"]}>
-      <View style={styles.header}>
-        <Pressable accessibilityRole="button" hitSlop={12} accessibilityLabel="Back" onPress={() => router.back()} style={styles.back}>
-          <Text style={styles.backIcon}>‹</Text>
-        </Pressable>
-        <Text style={styles.title}>stats</Text>
-        <View style={styles.back} />
-      </View>
+      <ScreenHeader title="stats" />
 
       <View style={styles.content}>
         <View style={styles.statRow}>

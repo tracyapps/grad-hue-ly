@@ -224,23 +224,22 @@ export function stepFloor(cols: number, rows: number): number {
   return Math.max(cols, rows) >= 16 ? 0.029 : MIN_STEP;
 }
 
-const SUBTLETY_SCALE: Record<ZenSubtlety, number> = {
-  gentle: 1,
-  subtle: 0.8,
-  ethereal: 0.64,
-};
-
 /**
- * The step for a player-chosen size and subtlety. "gentle" is the widest
- * step that still fits the board in the screen's colors; the others are
- * quieter fractions of it. On big boards they converge — every big board is
- * already a whisper.
+ * The step for a player-chosen size and subtlety.
+ *   clear   — the widest step that still fits the board in the screen's colors
+ *   whisper — about two-thirds of that, never below the fairness floor
+ *   soft    — halfway between
+ * Big boards have less room, so the three get closer together — but they stay
+ * distinct up to 18 tiles on a side.
  */
 export function stepFor(cols: number, rows: number, subtlety: ZenSubtlety = "subtle"): number {
   const longest = Math.max(cols, rows);
   const floor = stepFloor(cols, rows);
-  const widest = Math.max(floor, Math.min(0.12, 0.47 / Math.max(1, longest - 1)));
-  return Math.max(floor, widest * SUBTLETY_SCALE[subtlety]);
+  const clear = Math.max(floor, Math.min(0.12, 0.56 / Math.max(1, longest - 1)));
+  const whisper = Math.max(floor, clear * 0.64);
+  if (subtlety === "gentle") return clear;
+  if (subtlety === "ethereal") return whisper;
+  return (clear + whisper) / 2;
 }
 
 export function clampSize(cols: number, rows: number): [number, number] {
