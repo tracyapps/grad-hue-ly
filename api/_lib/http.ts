@@ -22,7 +22,7 @@ export function cors(request: Request): Record<string, string> {
     ? {
         "access-control-allow-origin": origin,
         "access-control-allow-headers": "authorization, content-type",
-        "access-control-allow-methods": "GET, PUT, OPTIONS",
+        "access-control-allow-methods": "GET, PUT, POST, DELETE, OPTIONS",
         "access-control-max-age": "600",
         vary: "origin",
       }

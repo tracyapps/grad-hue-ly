@@ -13,7 +13,16 @@
 
 import { Rng, hashSeed } from "./rng";
 import { generateField } from "./field";
-import { PuzzleParams, zenParams, levelParams, todayParams, ZenOptions } from "./difficulty";
+import {
+  PuzzleParams,
+  zenParams,
+  levelParams,
+  levelParamsAt,
+  endlessParams,
+  todayParams,
+  ZenOptions,
+  type ZenSubtlety,
+} from "./difficulty";
 import { Lab, hexToLab } from "./color";
 import { shuffledPlacement } from "./shuffle";
 import { quantizeField } from "./quantize";
@@ -117,8 +126,29 @@ export function puzzleFromColors(
   return puzzleFromField(colors.map(hexToLab), cols, rows, seed);
 }
 
-export function generateLevel(level: number, worldSeed: number = DEFAULT_WORLD_SEED): Puzzle {
-  return generatePuzzle(levelParams(level), levelSeed(level, worldSeed));
+export function generateLevel(
+  level: number,
+  worldSeed: number = DEFAULT_WORLD_SEED,
+  size?: { cols: number; rows: number },
+): Puzzle {
+  const params = size ? levelParamsAt(level, size.cols, size.rows) : levelParams(level);
+  return generatePuzzle(params, levelSeed(level, worldSeed));
+}
+
+export function endlessSeed(nonce: number, worldSeed: number = DEFAULT_WORLD_SEED): number {
+  return hashSeed("endless", nonce, worldSeed);
+}
+
+/** An endless board: any size, any subtlety; the nonce also picks the mood. */
+export function generateEndless(
+  nonce: number,
+  cols: number,
+  rows: number,
+  subtlety: ZenSubtlety,
+  worldSeed: number = DEFAULT_WORLD_SEED,
+): Puzzle {
+  const seed = endlessSeed(nonce, worldSeed);
+  return generatePuzzle(endlessParams(cols, rows, subtlety, seed % 9973), seed);
 }
 
 export function generateToday(dateISO: string, worldSeed: number = DEFAULT_WORLD_SEED): Puzzle {

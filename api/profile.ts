@@ -1,22 +1,16 @@
 /**
- * GET  /api/profile  → { data, updatedAt } for the signed-in player (or 404)
+ * GET  /api/profile  → { data, updatedAt } for the signed-in player ({ data: null } if none yet)
  * PUT  /api/profile  → store the client's merged snapshot { data }
  *
  * Auth: `Authorization: Bearer <Neon Auth JWT>`. The user id comes only from
  * the verified token, so one player can never read or write another's row.
  */
 
-import { neon } from "@neondatabase/serverless";
+import { sql } from "./_lib/db";
 import { userIdFrom } from "./_lib/auth";
 import { cors, json } from "./_lib/http";
 
 const MAX_BYTES = 512 * 1024;
-
-function db() {
-  const url = process.env.DATABASE_URL;
-  if (!url) throw new Error("DATABASE_URL is not configured");
-  return neon(url);
-}
 
 export function OPTIONS(request: Request): Response {
   return new Response(null, { status: 204, headers: cors(request) });
@@ -26,8 +20,8 @@ export async function GET(request: Request): Promise<Response> {
   const userId = await userIdFrom(request);
   if (!userId) return json(request, { error: "unauthorized" }, 401);
   try {
-    const rows = await db()`select data, updated_at from profiles where user_id = ${userId}`;
-    if (rows.length === 0) return json(request, { error: "not_found" }, 404);
+    const rows = await sql`select data, updated_at from profiles where user_id = ${userId}`;
+    if (rows.length === 0) return json(request, { data: null, updatedAt: null });
     return json(request, { data: rows[0].data, updatedAt: rows[0].updated_at });
   } catch (e) {
     console.error("profile GET failed", e);
@@ -53,7 +47,7 @@ export async function PUT(request: Request): Promise<Response> {
   }
 
   try {
-    const rows = await db()`
+    const rows = await sql`
       insert into profiles (user_id, data, updated_at)
       values (${userId}, ${JSON.stringify(data)}::jsonb, now())
       on conflict (user_id) do update set data = excluded.data, updated_at = now()

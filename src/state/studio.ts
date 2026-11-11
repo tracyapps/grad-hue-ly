@@ -22,6 +22,15 @@ export interface StudioGradient {
   canonical: string[];
   /** For 'corners' sources: TL, TR, BL, BR. */
   corners?: [string, string, string, string];
+  /** Set once shared to the community: the public board's id. */
+  sharedId?: string;
+}
+
+/** Anything a board can be played from: a Studio gradient or a community board. */
+export interface BoardSource {
+  kind: "image" | "corners";
+  corners?: readonly string[];
+  canonical: string[];
 }
 
 interface StudioState {
@@ -84,8 +93,8 @@ export const useStudio = create<StudioState>()(
  * are resampled smoothly (bicubic in OKLab) from the stored grid — never
  * nearest-neighbor, which skipped source columns and caused visible jumps.
  */
-export function gradientField(g: StudioGradient, cols: number, rows: number): Lab[] {
-  if (g.kind === "corners" && g.corners) {
+export function gradientField(g: BoardSource, cols: number, rows: number): Lab[] {
+  if (g.kind === "corners" && g.corners && g.corners.length === 4) {
     return bilinearField(g.corners.map(hexToLab) as [Lab, Lab, Lab, Lab], cols, rows);
   }
   return resampleField(g.canonical.map(hexToLab), CANONICAL_COLS, CANONICAL_ROWS, cols, rows);

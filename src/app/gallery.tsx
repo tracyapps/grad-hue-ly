@@ -5,44 +5,53 @@ import MiniBoard from "@/components/MiniBoard";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import GradientBackdrop from "@/components/GradientBackdrop";
-import { chapterName, generateLevel, generateToday, generateZen, quantizeField } from "@/engine";
-import { useProfile, type GalleryItem } from "@/state/profile";
+import { chapterName, generateEndless, generateLevel, generateToday, generateZen, quantizeField } from "@/engine";
+import { useCommunity } from "@/sync/community";
+import { parseGrid, useProfile, type GalleryItem } from "@/state/profile";
 import { gradientField, useStudio } from "@/state/studio";
 import { palette, radius, spacing, type as typeScale, trackedUpper } from "@/theme";
 
 /** A compact solved-board thumbnail — regenerated deterministically. */
 function GradientCard({ item, worldSeed }: { item: GalleryItem; worldSeed: number }) {
   const gradients = useStudio((s) => s.gradients);
+  const community = useCommunity((s) => s.boards);
+  const size = parseGrid(item.grid);
   const board = useMemo((): { colors: string[]; cols: number; rows: number } | null => {
-    if (item.kind === "studio" && item.studioId) {
-      const g = gradients.find((x) => x.id === item.studioId);
-      if (!g) return null;
-      const [c, r] = (item.grid ?? "7x9").split("x").map(Number);
-      const cols = c || 7;
-      const rows = r || 9;
-      return { colors: quantizeField(gradientField(g, cols, rows), cols, rows), cols, rows };
+    if (item.kind === "studio" || item.kind === "community") {
+      const src =
+        item.kind === "studio"
+          ? gradients.find((x) => x.id === item.studioId)
+          : community.find((x) => x.id === item.boardId);
+      if (!src) return null;
+      const { cols, rows } = size ?? { cols: 7, rows: 9 };
+      return { colors: quantizeField(gradientField(src, cols, rows), cols, rows), cols, rows };
     }
     const p =
       item.kind === "level" && item.level !== undefined
-        ? generateLevel(item.level, worldSeed)
+        ? generateLevel(item.level, worldSeed, size ?? undefined)
         : item.kind === "today" && item.dateISO
           ? generateToday(item.dateISO, worldSeed)
-          : generateZen(
-              Number(item.key.split(":")[1]) || 0,
-              { size: item.size, subtlety: item.subtlety },
-              worldSeed,
-            );
+          : item.kind === "zen" && size && item.nonce !== undefined
+            ? generateEndless(item.nonce, size.cols, size.rows, item.subtlety ?? "subtle", worldSeed)
+            : generateZen(
+                Number(item.key.split(":")[1]) || 0,
+                { size: item.size, subtlety: item.subtlety },
+                worldSeed,
+              );
     return { colors: p.colors, cols: p.cols, rows: p.rows };
-  }, [item, worldSeed, gradients]);
+  }, [item, worldSeed, gradients, community, size]);
 
+  const sizeText = size ? ` · ${size.cols}×${size.rows}` : "";
   const label =
     item.kind === "level"
-      ? `${chapterName(item.level ?? 1).toLowerCase()} · ${item.level}`
+      ? `${chapterName(item.level ?? 1).toLowerCase()} · ${item.level}${sizeText}`
       : item.kind === "today"
         ? `today · ${item.dateISO}`
         : item.kind === "studio"
-          ? `studio · ${item.grid ?? ""}`
-          : "zen";
+          ? `studio${sizeText}`
+          : item.kind === "community"
+            ? `${item.boardName ?? "community"}${sizeText}`
+            : `endless${sizeText}`;
 
   return (
     <View style={styles.card}>
@@ -62,7 +71,7 @@ function GradientCard({ item, worldSeed }: { item: GalleryItem; worldSeed: numbe
 export default function Gallery() {
   const gallery = useProfile((s) => s.gallery);
   const worldSeed = useProfile((s) => s.worldSeed);
-  const [tab, setTab] = useState<"all" | "level" | "today" | "zen" | "studio">("all");
+  const [tab, setTab] = useState<"all" | "level" | "today" | "zen" | "studio" | "community">("all");
 
   const items = useMemo(
     () => (tab === "all" ? gallery : gallery.filter((g) => g.kind === tab)),
@@ -82,9 +91,9 @@ export default function Gallery() {
         </View>
 
         <View style={styles.tabs}>
-          {(["all", "level", "today", "zen", "studio"] as const).map((t) => (
+          {(["all", "level", "zen", "community", "today", "studio"] as const).map((t) => (
             <Pressable accessibilityRole="button" key={t} onPress={() => setTab(t)} style={[styles.tab, tab === t && styles.tabActive]}>
-              <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>{t}</Text>
+              <Text style={[styles.tabText, tab === t && styles.tabTextActive]}>{t === "zen" ? "endless" : t}</Text>
             </Pressable>
           ))}
         </View>

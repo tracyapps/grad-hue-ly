@@ -198,6 +198,94 @@ export function zenParams(opts: ZenOptions = {}): PuzzleParams {
   };
 }
 
+// ------------------------------------------------------------ free sizes
+
+/** Board-size limits for player-chosen boards. */
+export const SIZE_LIMITS = { minSide: 3, maxCols: 14, maxRows: 20 } as const;
+
+/** Popular sizes, in order of tile count. */
+export const SIZE_PRESETS: ReadonlyArray<readonly [number, number]> = [
+  [5, 6],
+  [6, 8],
+  [7, 9],
+  [8, 11],
+  [9, 12],
+  [10, 14],
+  [12, 16],
+  [14, 20],
+];
+
+/**
+ * Smallest step a board may take. Up to 15 tiles on a side we hold the
+ * journey's floor; the very largest boards may go a little quieter, since
+ * there is physically no room on screen for bigger steps across 16–20 tiles.
+ */
+export function stepFloor(cols: number, rows: number): number {
+  return Math.max(cols, rows) >= 16 ? 0.029 : MIN_STEP;
+}
+
+const SUBTLETY_SCALE: Record<ZenSubtlety, number> = {
+  gentle: 1,
+  subtle: 0.8,
+  ethereal: 0.64,
+};
+
+/**
+ * The step for a player-chosen size and subtlety. "gentle" is the widest
+ * step that still fits the board in the screen's colors; the others are
+ * quieter fractions of it. On big boards they converge — every big board is
+ * already a whisper.
+ */
+export function stepFor(cols: number, rows: number, subtlety: ZenSubtlety = "subtle"): number {
+  const longest = Math.max(cols, rows);
+  const floor = stepFloor(cols, rows);
+  const widest = Math.max(floor, Math.min(0.12, 0.47 / Math.max(1, longest - 1)));
+  return Math.max(floor, widest * SUBTLETY_SCALE[subtlety]);
+}
+
+export function clampSize(cols: number, rows: number): [number, number] {
+  const c = Math.round(Math.min(SIZE_LIMITS.maxCols, Math.max(SIZE_LIMITS.minSide, cols)));
+  const r = Math.round(Math.min(SIZE_LIMITS.maxRows, Math.max(SIZE_LIMITS.minSide, rows)));
+  return [c, r];
+}
+
+/**
+ * Endless boards: any size, any subtlety, a fresh color mood each time
+ * (cycling through every chapter's palette).
+ */
+export function endlessParams(
+  cols: number,
+  rows: number,
+  subtlety: ZenSubtlety,
+  moodIndex: number,
+): PuzzleParams {
+  const [c, r] = clampSize(cols, rows);
+  return {
+    cols: c,
+    rows: r,
+    step: stepFor(c, r, subtlety),
+    twist: [0.25, 0.75],
+    mood: CHAPTER_MOODS[((moodIndex % CHAPTER_MOODS.length) + CHAPTER_MOODS.length) % CHAPTER_MOODS.length],
+    revealMs: Math.round(2600 + Math.min(1600, c * r * 8)),
+  };
+}
+
+/**
+ * A journey level played at a size of the player's choosing: the level's
+ * own colors and mood, at least as subtle as the level itself.
+ */
+export function levelParamsAt(level: number, cols: number, rows: number): PuzzleParams {
+  const base = levelParams(level);
+  const [c, r] = clampSize(cols, rows);
+  return {
+    ...base,
+    cols: c,
+    rows: r,
+    step: Math.max(stepFloor(c, r), Math.min(base.step, stepFor(c, r, "gentle"))),
+    revealMs: Math.max(base.revealMs, Math.round(2400 + Math.min(1600, c * r * 8))),
+  };
+}
+
 /** The shared daily puzzle: a stable, moderate board for the date. */
 export function todayParams(dateISO: string): PuzzleParams {
   const days = Math.floor(Date.parse(`${dateISO}T00:00:00Z`) / 86400000);

@@ -12,6 +12,8 @@ import Animated, { FadeInUp } from "react-native-reanimated";
 import { SafeAreaView } from "react-native-safe-area-context";
 import Board, { BoardPhase } from "./Board";
 import MiniBoard from "@/components/MiniBoard";
+import BoardSheet from "@/components/BoardSheet";
+import type { BoardChoice, BoardPreview } from "@/components/BoardPicker";
 import {
   applySwap,
   applyCornerLocks,
@@ -26,7 +28,19 @@ import { hapticDrop, hapticSolve } from "@/lib/haptics";
 import { playSound } from "@/lib/sound";
 import { palette, radius, spacing, type as typeScale, trackedUpper } from "@/theme";
 
-export type PlayKind = "level" | "today" | "zen" | "studio";
+export type PlayKind = "level" | "today" | "zen" | "studio" | "community";
+
+export interface PlayAction {
+  label: string;
+  onPress: () => void;
+}
+
+export interface ResizeOption {
+  value: BoardChoice;
+  showSubtlety: boolean;
+  preview: (choice: BoardChoice) => BoardPreview | null;
+  apply: (choice: BoardChoice) => void;
+}
 
 interface PlayScreenProps {
   puzzle: Puzzle;
@@ -37,9 +51,18 @@ interface PlayScreenProps {
   studioId?: string;
   grid?: string;
   zenNonce?: number;
+  boardId?: string;
+  boardName?: string;
   title: string;
   subtitle: string;
-  onNext: () => void;
+  /** The main "keep going" action on the solved sheet. */
+  next: PlayAction;
+  /** Optional second way to keep going ("surprise me"). */
+  surprise?: PlayAction;
+  /** Lets the player change the board size (HUD + solved sheet). */
+  resize?: ResizeOption;
+  /** Fired once when the board is solved (after it's recorded). */
+  onSolved?: () => void;
   onExit: () => void;
 }
 
@@ -52,11 +75,21 @@ export default function PlayScreen({
   studioId,
   grid,
   zenNonce,
+  boardId,
+  boardName,
   title,
   subtitle,
-  onNext,
+  next,
+  surprise,
+  resize,
+  onSolved,
   onExit,
 }: PlayScreenProps) {
+  const [sizing, setSizing] = useState<BoardChoice | null>(null);
+  const sizingPreview = useMemo(
+    () => (sizing && resize ? resize.preview(sizing) : null),
+    [sizing, resize],
+  );
   const reduceMotion = useProfile((s) => s.settings.reduceMotion);
   const cornerAssist = useProfile((s) => s.settings.cornerAssist);
   const showMoves = useProfile((s) => s.settings.showMoves);
@@ -118,13 +151,16 @@ export default function PlayScreen({
           studioId,
           grid,
           zenNonce,
+          boardId,
+          boardName,
           moves: moveCount,
         });
+        onSolved?.();
       }
       // Let the seams close and the finished gradient breathe before the sheet.
       setTimeout(() => setSheetVisible(true), reduceMotion ? 700 : 2100);
     },
-    [kind, level, size, subtlety, studioId, grid, zenNonce, recordSolve, reduceMotion],
+    [kind, level, size, subtlety, studioId, grid, zenNonce, boardId, boardName, onSolved, recordSolve, reduceMotion],
   );
 
   const onSwap = useCallback(
@@ -180,6 +216,19 @@ export default function PlayScreen({
           <Text style={styles.hudSubtitle}>{subtitle}</Text>
         </View>
         <View style={styles.hudMovesWrap}>
+          {resize && phase !== "solved" && (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => setSizing(resize.value)}
+              style={styles.cornerButton}
+              hitSlop={8}
+              accessibilityLabel={`Board size ${puzzle.cols} by ${puzzle.rows}. Change size`}
+            >
+              <Text style={styles.cornerButtonText}>
+                {puzzle.cols}×{puzzle.rows}
+              </Text>
+            </Pressable>
+          )}
           {!cornerAssist && phase === "playing" && (
             <Pressable accessibilityRole="button"
               onPress={setCorners}
@@ -233,6 +282,7 @@ export default function PlayScreen({
         <View style={styles.sheetBackdrop}>
           <Animated.View entering={FadeInUp.springify().damping(18)} style={styles.sheet}>
             <Text style={styles.sheetKicker}>{kind === "zen" ? "harmony" : "solved"}</Text>
+            {boardName && kind !== "level" ? <Text style={styles.sheetBoardName}>{boardName}</Text> : null}
             <Text style={styles.sheetMoves}>
               {moves}
               <Text style={styles.sheetMovesUnit}> {moves === 1 ? "move" : "moves"}</Text>
@@ -244,12 +294,25 @@ export default function PlayScreen({
               height={Math.min(150, 26 * puzzle.rows)}
               radius={8}
             />
-            <Pressable accessibilityRole="button" style={styles.primaryButton} onPress={onNext}>
-              <Text style={styles.primaryButtonText}>
-                {kind === "level" ? "next level" : kind === "today" ? "lovely" : "another"}
-              </Text>
-            </Pressable>
+            <View style={styles.sheetButtons}>
+              <Pressable accessibilityRole="button" style={styles.primaryButton} onPress={next.onPress}>
+                <Text style={styles.primaryButtonText}>{next.label}</Text>
+              </Pressable>
+              {surprise && (
+                <Pressable accessibilityRole="button" style={styles.secondaryButton} onPress={surprise.onPress}>
+                  <Text style={styles.secondaryButtonText}>{surprise.label}</Text>
+                </Pressable>
+              )}
+            </View>
             <View style={styles.sheetSecondaryRow}>
+              {resize && (
+                <>
+                  <Pressable accessibilityRole="button" hitSlop={8} onPress={() => setSizing(resize.value)}>
+                    <Text style={styles.sheetSecondary}>board size</Text>
+                  </Pressable>
+                  <Text style={styles.sheetDot}>·</Text>
+                </>
+              )}
               <Pressable accessibilityRole="button" hitSlop={8} onPress={restart}>
                 <Text style={styles.sheetSecondary}>replay</Text>
               </Pressable>
@@ -260,6 +323,25 @@ export default function PlayScreen({
             </View>
           </Animated.View>
         </View>
+      )}
+
+      {resize && (
+        <BoardSheet
+          visible={sizing !== null}
+          title="board size"
+          byline={title.toLowerCase()}
+          value={sizing ?? resize.value}
+          onChange={setSizing}
+          preview={sizingPreview}
+          showSubtlety={resize.showSubtlety}
+          playLabel={phase === "solved" ? "play" : "restart at"}
+          onPlay={() => {
+            const choice = sizing ?? resize.value;
+            setSizing(null);
+            resize.apply(choice);
+          }}
+          onClose={() => setSizing(null)}
+        />
       )}
     </SafeAreaView>
   );
@@ -323,6 +405,7 @@ const styles = StyleSheet.create({
     alignItems: "center",
     gap: spacing.lg,
   },
+  sheetBoardName: { ...typeScale.body, color: palette.textDim, marginTop: -8, textAlign: "center" },
   sheetKicker: { ...typeScale.label, ...trackedUpper, color: palette.accent },
   sheetMoves: { ...typeScale.display, color: palette.text, fontVariant: ["tabular-nums"] },
   sheetMovesUnit: { fontSize: 16, color: palette.textDim, fontWeight: "400" },
@@ -331,13 +414,21 @@ const styles = StyleSheet.create({
     paddingVertical: 14,
     paddingHorizontal: spacing.xxl,
     borderRadius: 999,
-    marginTop: spacing.xs,
   },
   primaryButtonText: {
     ...typeScale.label,
     ...trackedUpper,
     color: "#1D1208",
   },
+  sheetButtons: { flexDirection: "row", gap: spacing.sm, flexWrap: "wrap", justifyContent: "center", marginTop: spacing.xs },
+  secondaryButton: {
+    borderWidth: 1,
+    borderColor: palette.accent,
+    paddingVertical: 13,
+    paddingHorizontal: spacing.xl,
+    borderRadius: 999,
+  },
+  secondaryButtonText: { ...typeScale.label, ...trackedUpper, color: palette.accent },
   sheetSecondaryRow: { flexDirection: "row", alignItems: "center", gap: spacing.md },
   sheetSecondary: { ...typeScale.small, ...trackedUpper, color: palette.textDim },
   sheetDot: { color: palette.textFaint },

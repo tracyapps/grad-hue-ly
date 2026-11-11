@@ -14,23 +14,33 @@ import {
   generateLevel,
   generateToday,
   generateZen,
+  generateEndless,
+  endlessParams,
   type Puzzle,
   type PuzzleParams,
   type ZenSize,
   type ZenSubtlety,
 } from "@/engine";
 
+export type PlayKind = "level" | "today" | "zen" | "studio" | "community";
+
 export interface GalleryItem {
   /** Stable id: `${kind}:${level or date or nonce}` */
   key: string;
-  kind: "level" | "today" | "zen" | "studio";
+  kind: PlayKind;
   level?: number;
   dateISO?: string;
   size?: ZenSize;
   subtlety?: ZenSubtlety;
   /** For studio solves: the gradient id and played grid. */
   studioId?: string;
+  /** Played board size as "COLSxROWS" (studio, community, endless, sized journey). */
   grid?: string;
+  /** Endless boards: the nonce they were generated from. */
+  nonce?: number;
+  /** Community boards: id + name (so the gallery can label them). */
+  boardId?: string;
+  boardName?: string;
   solvedAt: number;
   moves: number;
 }
@@ -43,6 +53,27 @@ export interface Settings {
   cornerAssist: boolean;
   /** Show the move counter during play (always recorded either way). */
   showMoves: boolean;
+  /** Endless boards: the size and subtlety you like to play. */
+  endless: { cols: number; rows: number; subtlety: ZenSubtlety };
+  /** Journey board size: grow with the levels, or always this size. */
+  journeySize: { mode: "grow" | "fixed"; cols: number; rows: number };
+}
+
+export const DEFAULT_SETTINGS: Settings = {
+  sound: true,
+  haptics: true,
+  reduceMotion: false,
+  cornerAssist: true,
+  showMoves: false,
+  endless: { cols: 7, rows: 9, subtlety: "subtle" },
+  journeySize: { mode: "grow", cols: 9, rows: 12 },
+};
+
+/** "7x9" ⇄ {cols, rows} */
+export const gridKey = (cols: number, rows: number) => `${cols}x${rows}`;
+export function parseGrid(grid: string | undefined): { cols: number; rows: number } | null {
+  const m = /^(\d+)x(\d+)$/.exec(grid ?? "");
+  return m ? { cols: Number(m[1]), rows: Number(m[2]) } : null;
 }
 
 export interface ProfileState {
@@ -64,7 +95,7 @@ export interface ProfileState {
   onboarded: boolean;
 
   recordSolve: (input: {
-    kind: "level" | "today" | "zen" | "studio";
+    kind: PlayKind;
     level?: number;
     dateISO?: string;
     size?: ZenSize;
@@ -73,6 +104,8 @@ export interface ProfileState {
     grid?: string;
     /** Zen: the nonce the board was generated from (keys the gallery entry). */
     zenNonce?: number;
+    boardId?: string;
+    boardName?: string;
     moves: number;
   }) => void;
   /** Zen has no "progress"; every solve just advances the seed stream. */
@@ -115,26 +148,22 @@ export const useProfile = create<ProfileState>()(
       zenNonce: 0,
       today: {},
       gallery: [],
-      settings: {
-        sound: true,
-        haptics: true,
-        reduceMotion: false,
-        cornerAssist: true,
-        showMoves: false,
-      },
+      settings: DEFAULT_SETTINGS,
       onboarded: false,
 
-      recordSolve: ({ kind, level, size, subtlety, studioId, grid, zenNonce, moves }) => {
+      recordSolve: ({ kind, level, size, subtlety, studioId, grid, zenNonce, boardId, boardName, moves }) => {
         const state = get();
         const dateISO = kind === "today" ? todayISO() : undefined;
         const key =
           kind === "level"
-            ? `level:${level}`
+            ? `level:${level}${grid ? `:${grid}` : ""}`
             : kind === "today"
               ? `today:${dateISO}`
               : kind === "studio"
                 ? `studio:${studioId}:${grid}`
-                : `zen:${zenNonce ?? state.zenNonce}`;
+                : kind === "community"
+                  ? `community:${boardId}:${grid}`
+                  : `zen:${zenNonce ?? state.zenNonce}${grid ? `:${grid}:${subtlety}` : ""}`;
 
         const patch: Partial<ProfileState> = {
           solvedCount: state.solvedCount + 1,
@@ -169,6 +198,9 @@ export const useProfile = create<ProfileState>()(
           subtlety,
           studioId,
           grid,
+          nonce: kind === "zen" ? zenNonce : undefined,
+          boardId,
+          boardName,
           solvedAt: Date.now(),
           moves,
         };
@@ -194,21 +226,21 @@ export const useProfile = create<ProfileState>()(
     {
       name: "gradhuely-profile",
       storage: createJSONStorage(() => AsyncStorage),
-      version: 2,
-      migrate: (persisted, version) => {
-        const state = persisted as { state?: Partial<ProfileState> } | undefined;
-        // v1 → v2: settings gained cornerAssist + showMoves.
-        if (state?.state?.settings && version < 2) {
-          const defaults: Settings = {
-            sound: true,
-            haptics: true,
-            reduceMotion: false,
-            cornerAssist: true,
-            showMoves: false,
-          };
-          state.state.settings = { ...defaults, ...state.state.settings };
-        }
-        return state as unknown as ProfileState;
+      version: 3,
+      // Older saves lack newer settings keys; deep-merge so every key exists.
+      migrate: (persisted) => persisted as ProfileState,
+      merge: (persisted, current) => {
+        const p = (persisted ?? {}) as Partial<ProfileState>;
+        return {
+          ...current,
+          ...p,
+          settings: {
+            ...DEFAULT_SETTINGS,
+            ...(p.settings ?? {}),
+            endless: { ...DEFAULT_SETTINGS.endless, ...(p.settings?.endless ?? {}) },
+            journeySize: { ...DEFAULT_SETTINGS.journeySize, ...(p.settings?.journeySize ?? {}) },
+          },
+        };
       },
     },
   ),
@@ -229,6 +261,14 @@ export function galleryParams(item: GalleryItem): {
     return {
       params: todayParams(item.dateISO),
       regenerate: (w) => generateToday(item.dateISO as string, w),
+    };
+  }
+  const g = parseGrid(item.grid);
+  if (item.kind === "zen" && g && item.nonce !== undefined) {
+    const sub = item.subtlety ?? "subtle";
+    return {
+      params: endlessParams(g.cols, g.rows, sub, 0),
+      regenerate: (w) => generateEndless(item.nonce as number, g.cols, g.rows, sub, w),
     };
   }
   const opts = { size: item.size, subtlety: item.subtlety };

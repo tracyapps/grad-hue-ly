@@ -41,6 +41,8 @@ export default function RootLayout() {
           <Stack.Screen name="index" />
           <Stack.Screen name="play" />
           <Stack.Screen name="zen" />
+          <Stack.Screen name="endless" />
+          <Stack.Screen name="community" />
           <Stack.Screen name="gallery" />
           <Stack.Screen name="stats" />
           <Stack.Screen name="settings" />

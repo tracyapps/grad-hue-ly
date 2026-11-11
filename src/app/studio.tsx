@@ -27,6 +27,12 @@ import {
   type Lab,
 } from "@/engine";
 import MiniBoard from "@/components/MiniBoard";
+import BoardSheet from "@/components/BoardSheet";
+import UsernamePrompt from "@/components/UsernamePrompt";
+import type { BoardChoice } from "@/components/BoardPicker";
+import { useAccount } from "@/sync/account";
+import { useCommunity } from "@/sync/community";
+import { ApiError, explain } from "@/sync/api";
 import {
   CANONICAL_COLS,
   CANONICAL_ROWS,
@@ -416,6 +422,73 @@ function StudioWeb() {
     });
   };
 
+  // ---- choose a size before playing
+  const [sheetFor, setSheetFor] = useState<StudioGradient | null>(null);
+  const [sheetChoice, setSheetChoice] = useState<BoardChoice>({ cols: 7, rows: 9 });
+  const openSheet = (g: StudioGradient) => {
+    setSheetChoice({ cols: grid.cols, rows: grid.rows });
+    setSheetFor(g);
+  };
+  const sheetPreview = useMemo(
+    () =>
+      sheetFor
+        ? {
+            colors: quantizeField(gradientField(sheetFor, sheetChoice.cols, sheetChoice.rows), sheetChoice.cols, sheetChoice.rows),
+            cols: sheetChoice.cols,
+            rows: sheetChoice.rows,
+          }
+        : null,
+    [sheetFor, sheetChoice],
+  );
+  const sheetNote = useMemo(() => {
+    if (!sheetPreview) return null;
+    const r = readability(sheetPreview.colors.map(hexToLab), sheetPreview.cols, sheetPreview.rows);
+    return { text: `${r.label} — ${r.note}`, warn: !r.ok };
+  }, [sheetPreview]);
+
+  // ---- share to the community
+  const publish = useCommunity((s) => s.publish);
+  const unpublish = useCommunity((s) => s.unpublish);
+  const [shareMsg, setShareMsg] = useState<{ id: string; text: string } | null>(null);
+  const [askName, setAskName] = useState<StudioGradient | null>(null);
+
+  const share = async (g: StudioGradient) => {
+    const acct = useAccount.getState();
+    if (acct.status !== "signed-in") {
+      setShareMsg({ id: g.id, text: "sign in (settings → account) to share with the community" });
+      return;
+    }
+    if (!acct.username) {
+      setAskName(g);
+      return;
+    }
+    setShareMsg({ id: g.id, text: "sharing…" });
+    try {
+      if (g.sharedId) await unpublish(g.sharedId).catch(() => {});
+      const board = await publish({
+        name: g.name,
+        kind: g.kind,
+        corners: g.corners,
+        canonical: g.canonical,
+      });
+      updateGradient(g.id, { sharedId: board.id });
+      setShareMsg({ id: g.id, text: "shared — it's in the community gallery" });
+    } catch (e) {
+      setShareMsg({ id: g.id, text: explain(e instanceof ApiError ? e.code : "") });
+    }
+  };
+
+  const unshare = async (g: StudioGradient) => {
+    if (!g.sharedId) return;
+    try {
+      await unpublish(g.sharedId);
+    } catch {
+      /* already gone */
+    }
+    updateGradient(g.id, { sharedId: undefined });
+    setShareMsg({ id: g.id, text: "removed from the community" });
+  };
+
   return (
     <View style={{ flex: 1 }}>
       <GradientBackdrop />
@@ -595,7 +668,7 @@ function StudioWeb() {
                   <Pressable
                     accessibilityRole="button"
                     accessibilityLabel={`Play ${g.name} at ${grid.label}`}
-                    onPress={() => play(g, grid.cols, grid.rows)}
+                    onPress={() => openSheet(g)}
                     style={styles.gridArt}
                   >
                     <MiniBoard
@@ -607,13 +680,25 @@ function StudioWeb() {
                     />
                   </Pressable>
                   <Text style={styles.gridName} numberOfLines={1}>{g.name}</Text>
+                  {shareMsg?.id === g.id && (
+                    <Text style={styles.shareMsg} accessibilityLiveRegion="polite">{shareMsg.text}</Text>
+                  )}
                   <View style={styles.gridActions}>
                     <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${g.name}`} hitSlop={6} onPress={() => edit(g)}>
                       <Text style={styles.gridAction}>edit</Text>
                     </Pressable>
-                    <Pressable accessibilityRole="button" accessibilityLabel={`Play ${g.name} at ${grid.label}`} hitSlop={6} onPress={() => play(g, grid.cols, grid.rows)}>
+                    <Pressable accessibilityRole="button" accessibilityLabel={`Play ${g.name} — choose a size`} hitSlop={6} onPress={() => openSheet(g)}>
                       <Text style={styles.gridAction}>play</Text>
                     </Pressable>
+                    {g.sharedId ? (
+                      <Pressable accessibilityRole="button" accessibilityLabel={`Stop sharing ${g.name}`} hitSlop={6} onPress={() => void unshare(g)}>
+                        <Text style={styles.gridActionShared}>shared ✓</Text>
+                      </Pressable>
+                    ) : (
+                      <Pressable accessibilityRole="button" accessibilityLabel={`Share ${g.name} with the community`} hitSlop={6} onPress={() => void share(g)}>
+                        <Text style={styles.gridAction}>share</Text>
+                      </Pressable>
+                    )}
                     <Pressable accessibilityRole="button" accessibilityLabel={`Delete ${g.name}`} hitSlop={6} onPress={() => removeGradient(g.id)}>
                       <Text style={styles.gridActionDim}>delete</Text>
                     </Pressable>
@@ -640,8 +725,16 @@ function StudioWeb() {
                 <Pressable accessibilityRole="button" style={styles.playChip} onPress={() => edit(g)} accessibilityLabel={`Edit ${g.name}`}>
                   <Text style={styles.playChipText}>edit</Text>
                 </Pressable>
-                <Pressable accessibilityRole="button" style={styles.playChip} onPress={() => play(g, grid.cols, grid.rows)} accessibilityLabel={`Play ${g.name}`}>
-                  <Text style={styles.playChipText}>play {grid.label}</Text>
+                <Pressable accessibilityRole="button" style={styles.playChip} onPress={() => openSheet(g)} accessibilityLabel={`Play ${g.name} — choose a size`}>
+                  <Text style={styles.playChipText}>play</Text>
+                </Pressable>
+                <Pressable
+                  accessibilityRole="button"
+                  style={styles.playChip}
+                  onPress={() => void (g.sharedId ? unshare(g) : share(g))}
+                  accessibilityLabel={g.sharedId ? `Stop sharing ${g.name}` : `Share ${g.name} with the community`}
+                >
+                  <Text style={styles.playChipText}>{g.sharedId ? "shared ✓" : "share"}</Text>
                 </Pressable>
                 <Pressable accessibilityRole="button" hitSlop={8} onPress={() => removeGradient(g.id)} accessibilityLabel={`Delete ${g.name}`}>
                   <Text style={styles.delete}>×</Text>
@@ -656,6 +749,32 @@ function StudioWeb() {
           )}
         </ScrollView>
       </SafeAreaView>
+
+      <BoardSheet
+        visible={sheetFor !== null}
+        title={sheetFor?.name ?? ""}
+        byline={sheetFor?.sharedId ? "yours · shared with the community" : "yours"}
+        value={sheetChoice}
+        onChange={setSheetChoice}
+        preview={sheetPreview}
+        note={sheetNote}
+        onPlay={() => {
+          if (!sheetFor) return;
+          const g = sheetFor;
+          setSheetFor(null);
+          play(g, sheetChoice.cols, sheetChoice.rows);
+        }}
+        onClose={() => setSheetFor(null)}
+      />
+
+      <UsernamePrompt
+        visible={askName !== null}
+        onDone={(ok) => {
+          const g = askName;
+          setAskName(null);
+          if (ok && g) void share(g);
+        }}
+      />
     </View>
   );
 }
@@ -746,6 +865,8 @@ const styles = StyleSheet.create({
   gridName: { ...typeScale.body, color: palette.text },
   gridActions: { flexDirection: "row", gap: spacing.md },
   gridAction: { ...typeScale.small, ...trackedUpper, color: palette.textDim },
+  gridActionShared: { ...typeScale.small, ...trackedUpper, color: "#7FD1A8" },
+  shareMsg: { ...typeScale.small, color: palette.textDim },
   gridActionDim: { ...typeScale.small, ...trackedUpper, color: palette.textFaint },
   libraryHint: { ...typeScale.small, color: palette.textFaint, textAlign: "center" },
   readRow: {

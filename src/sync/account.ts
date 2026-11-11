@@ -11,12 +11,15 @@ import { useProfile, type SyncedKey } from "@/state/profile";
 import { useStudio, type StudioGradient } from "@/state/studio";
 import { accountsAvailable, apiToken, currentUser, sendCode, signOut, verifyCode } from "./auth";
 import { mergeSnapshots, type Snapshot } from "./merge";
+import { api, apiUrl, explain, ApiError } from "./api";
 
 type Status = "unknown" | "signed-out" | "code-sent" | "signed-in";
 
 interface AccountState {
   status: Status;
   email: string | null;
+  /** Public @name (null until chosen). */
+  username: string | null;
   syncing: boolean;
   lastSyncedAt: number | null;
   error: string | null;
@@ -26,10 +29,10 @@ interface AccountState {
   startOver: () => void;
   signOut: () => Promise<void>;
   syncNow: () => Promise<void>;
+  loadUsername: () => Promise<void>;
+  /** Returns an error message, or null on success. */
+  setUsername: (name: string) => Promise<string | null>;
 }
-
-const API = process.env.EXPO_PUBLIC_API_URL ?? "";
-const apiUrl = (path: string) => `${API}${path}`;
 
 const SYNCED: SyncedKey[] = [
   "worldSeed",
@@ -72,6 +75,7 @@ let syncInFlight: Promise<void> | null = null;
 export const useAccount = create<AccountState>()((set, get) => ({
   status: "unknown",
   email: null,
+  username: null,
   syncing: false,
   lastSyncedAt: null,
   error: null,
@@ -85,6 +89,7 @@ export const useAccount = create<AccountState>()((set, get) => ({
     if (user) {
       set({ status: "signed-in", email: user.email, error: null });
       void get().syncNow();
+      void get().loadUsername();
     } else {
       set({ status: "signed-out" });
     }
@@ -116,6 +121,7 @@ export const useAccount = create<AccountState>()((set, get) => ({
     }
     set({ status: "signed-in", error: null });
     await get().syncNow();
+    void get().loadUsername();
     return true;
   },
 
@@ -123,7 +129,30 @@ export const useAccount = create<AccountState>()((set, get) => ({
 
   signOut: async () => {
     await signOut();
-    set({ status: "signed-out", email: null, lastSyncedAt: null, error: null });
+    set({ status: "signed-out", email: null, username: null, lastSyncedAt: null, error: null });
+  },
+
+  loadUsername: async () => {
+    try {
+      const { username } = await api<{ username: string | null }>("/api/me", { auth: true });
+      set({ username });
+    } catch {
+      /* offline: try again next time */
+    }
+  },
+
+  setUsername: async (name) => {
+    try {
+      const { username } = await api<{ username: string }>("/api/me", {
+        method: "PUT",
+        body: { username: name },
+        auth: true,
+      });
+      set({ username });
+      return null;
+    } catch (e) {
+      return explain(e instanceof ApiError ? e.code : "");
+    }
   },
 
   syncNow: async () => {
@@ -140,8 +169,8 @@ export const useAccount = create<AccountState>()((set, get) => ({
         const headers = { authorization: `Bearer ${token}`, "content-type": "application/json" };
         const res = await fetch(apiUrl("/api/profile"), { headers });
         let remote: Snapshot | null = null;
-        if (res.ok) remote = ((await res.json()) as { data: Snapshot }).data;
-        else if (res.status !== 404) throw new Error(`pull failed (${res.status})`);
+        if (res.ok) remote = ((await res.json()) as { data: Snapshot | null }).data;
+        else throw new Error(`pull failed (${res.status})`);
 
         const merged = mergeSnapshots(localSnapshot(), remote);
         if (remote) applySnapshot(merged);

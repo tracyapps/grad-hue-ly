@@ -312,7 +312,7 @@ function acceptable(points: Vec3[], mood: Mood, loose: boolean, hueAllowance: nu
   return labs;
 }
 
-const MAX_ATTEMPTS = 1000;
+const MAX_ATTEMPTS = 1100;
 
 function meanStep(points: Vec3[], cols: number, rows: number): number {
   let sum = 0;
@@ -519,7 +519,10 @@ export function generateField(rng: Rng, spec: FieldSpec): GeneratedField {
   for (let attempt = 0; attempt < MAX_ATTEMPTS; attempt++) {
     const loosen = attempt < 350 ? 0 : attempt < 750 ? 1 : 2;
     const loose = loosen !== 0;
-    const step = spec.step * (loosen === 2 ? 0.9 : 1);
+    // Last resort: ease the step a little more every 30 attempts until the
+    // board fits the screen's gamut (very large boards at large steps).
+    const step =
+      loosen === 2 ? spec.step * Math.pow(0.92, 1 + Math.floor((attempt - 750) / 30)) : spec.step;
     const band: [number, number] = loose ? [LIGHT_MIN, LIGHT_MAX] : mood.field;
     // Big boards need room: a mood's hue window widens with the board.
     const longest = Math.max(cols, rows);
@@ -557,10 +560,11 @@ export function generateField(rng: Rng, spec: FieldSpec): GeneratedField {
 
   // Unreachable in practice (tests sweep the whole curve): a safe, quiet
   // two-axis board so the game can never crash on a seed.
+  // Spans are capped so even a huge board stays inside the gamut.
   const fallback = sampleSurface(
-    [0.68, 0.06, 0.04],
-    [0, 0, 0.032 * Math.max(1, cols - 1)],
-    [0.032 * Math.max(1, rows - 1), 0, 0],
+    [0.66, 0.06, 0.04],
+    [0, 0, Math.min(0.032 * Math.max(1, cols - 1), 0.28)],
+    [Math.min(0.032 * Math.max(1, rows - 1), 0.5), 0, 0],
     [0, 0, 0],
     cols,
     rows,
