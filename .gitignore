@@ -45,3 +45,4 @@ example
 # local
 .zcode/
 .DS_Store
+dist-e2e/

@@ -155,12 +155,12 @@ describe("community boards", () => {
 describe("profile sync", () => {
   it("stores one snapshot per user, isolated", async () => {
     let r = await profile.GET(await req("GET", "/api/profile", { user: "u1" }));
-    expect(r.status).toBe(404);
+    expect((await r.json()).data).toBe(null);
     r = await profile.PUT(await req("PUT", "/api/profile", { user: "u1", body: { data: { v: 1, level: 7 } } }));
     expect(r.status).toBe(200);
     r = await profile.GET(await req("GET", "/api/profile", { user: "u1" }));
     expect((await r.json()).data).toEqual({ v: 1, level: 7 });
     r = await profile.GET(await req("GET", "/api/profile", { user: "u2" }));
-    expect(r.status).toBe(404);
+    expect((await r.json()).data).toBe(null);
   });
 });

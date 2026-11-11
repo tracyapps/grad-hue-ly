@@ -6,6 +6,7 @@
 import { useState } from "react";
 import { ActivityIndicator, Pressable, StyleSheet, Text, TextInput, View } from "react-native";
 import { useAccount } from "@/sync/account";
+import UsernamePrompt from "@/components/UsernamePrompt";
 import { accountsAvailable } from "@/sync/auth";
 import { palette, radius, spacing, type as typeScale, trackedUpper } from "@/theme";
 
@@ -28,6 +29,8 @@ export default function AccountPanel() {
   const [emailInput, setEmailInput] = useState("");
   const [code, setCode] = useState("");
   const [busy, setBusy] = useState(false);
+  const username = useAccount((s) => s.username);
+  const [naming, setNaming] = useState(false);
 
   if (!accountsAvailable()) {
     return (
@@ -52,6 +55,21 @@ export default function AccountPanel() {
       <View style={styles.box}>
         <Text style={styles.label}>signed in</Text>
         <Text style={styles.value}>{email}</Text>
+        <View style={styles.nameRow}>
+          <Text style={styles.hint}>
+            {username ? (
+              <>
+                community name <Text style={styles.value}>@{username}</Text>
+              </>
+            ) : (
+              "no community name yet — pick one to share boards"
+            )}
+          </Text>
+          <Pressable accessibilityRole="button" hitSlop={8} onPress={() => setNaming(true)}>
+            <Text style={styles.link}>{username ? "change" : "pick one"}</Text>
+          </Pressable>
+        </View>
+        <UsernamePrompt visible={naming} onDone={() => setNaming(false)} />
         <Text style={styles.hint} accessibilityLiveRegion="polite">
           {syncing ? "syncing…" : `progress synced ${ago(lastSyncedAt)}`}
         </Text>
@@ -156,6 +174,8 @@ const styles = StyleSheet.create({
   value: { ...typeScale.body, color: palette.text },
   hint: { ...typeScale.small, color: palette.textDim, lineHeight: 17 },
   error: { ...typeScale.small, color: palette.accent },
+  nameRow: { flexDirection: "row", alignItems: "center", justifyContent: "space-between", gap: spacing.md },
+  link: { ...typeScale.small, ...trackedUpper, color: palette.accent },
   input: {
     backgroundColor: palette.bgPlay,
     color: palette.text,

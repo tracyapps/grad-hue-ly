@@ -1,5 +1,5 @@
 /**
- * GET  /api/profile  → { data, updatedAt } for the signed-in player (or 404)
+ * GET  /api/profile  → { data, updatedAt } for the signed-in player ({ data: null } if none yet)
  * PUT  /api/profile  → store the client's merged snapshot { data }
  *
  * Auth: `Authorization: Bearer <Neon Auth JWT>`. The user id comes only from
@@ -21,7 +21,7 @@ export async function GET(request: Request): Promise<Response> {
   if (!userId) return json(request, { error: "unauthorized" }, 401);
   try {
     const rows = await sql`select data, updated_at from profiles where user_id = ${userId}`;
-    if (rows.length === 0) return json(request, { error: "not_found" }, 404);
+    if (rows.length === 0) return json(request, { data: null, updatedAt: null });
     return json(request, { data: rows[0].data, updatedAt: rows[0].updated_at });
   } catch (e) {
     console.error("profile GET failed", e);

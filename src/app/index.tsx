@@ -1,7 +1,9 @@
 import { Platform, Pressable, ScrollView, StyleSheet, Text, View } from "react-native";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
-import { useMemo } from "react";
+import { useMemo, useState } from "react";
+import BoardSheet from "@/components/BoardSheet";
+import type { BoardChoice } from "@/components/BoardPicker";
 import { chapterName, generateLevel } from "@/engine";
 import MiniBoard from "@/components/MiniBoard";
 import { useAccount } from "@/sync/account";
@@ -21,7 +23,20 @@ export default function Home() {
   const accountStatus = useAccount((s) => s.status);
   const syncing = useAccount((s) => s.syncing);
   const todayKey = new Date().toISOString().slice(0, 10);
-  const next = useMemo(() => generateLevel(level, worldSeed), [level, worldSeed]);
+  const journeySize = useProfile((s) => s.settings.journeySize);
+  const endless = useProfile((s) => s.settings.endless);
+  const updateSettings = useProfile((s) => s.updateSettings);
+  const fixed = journeySize.mode === "fixed" ? journeySize : undefined;
+  const next = useMemo(
+    () => generateLevel(level, worldSeed, fixed && { cols: fixed.cols, rows: fixed.rows }),
+    [level, worldSeed, fixed],
+  );
+  const [sizing, setSizing] = useState<BoardChoice | null>(null);
+  const sizingPreview = useMemo(() => {
+    if (!sizing) return null;
+    const pz = generateLevel(level, worldSeed, sizing);
+    return { colors: pz.colors, cols: pz.cols, rows: pz.rows };
+  }, [sizing, level, worldSeed]);
   const todayDone = useProfile((s) => s.today[todayKey]?.solved ?? false);
 
   const openLevel = (n: number) =>
@@ -68,9 +83,17 @@ export default function Home() {
             <Text style={styles.cardTitle}>
               {chapterName(level)} · {level}
             </Text>
-            <Text style={styles.cardMeta}>
-              {next.cols} × {next.rows}
-            </Text>
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={`Journey board size: ${fixed ? `always ${fixed.cols} by ${fixed.rows}` : "grows with the levels"}. Change`}
+              hitSlop={8}
+              onPress={() => setSizing({ cols: next.cols, rows: next.rows })}
+              style={styles.sizeChip}
+            >
+              <Text style={styles.sizeChipText}>
+                {next.cols}×{next.rows} · {fixed ? "your size" : "grows"} ▾
+              </Text>
+            </Pressable>
           </View>
           <View style={styles.steppers}>
             <Pressable accessibilityRole="button"
@@ -92,22 +115,38 @@ export default function Home() {
           </View>
         </Pressable>
 
-        {/* Today + Zen */}
+        {/* Endless + Community */}
         <View style={styles.rowPair}>
-          <Pressable accessibilityRole="button"
+          <Pressable
+            accessibilityRole="button"
+            accessibilityLabel={`Endless: ${endless.cols} by ${endless.rows}. Choose your board and play forever`}
             style={[styles.card, styles.cardHalf]}
-            onPress={() => router.push({ pathname: "/play", params: { mode: "today" } })}
+            onPress={() => router.push("/endless")}
           >
-            <Text style={styles.cardKicker}>today</Text>
+            <Text style={styles.cardKicker}>endless</Text>
             <Text style={styles.cardTitleSmall}>
-              {todayDone ? "solved ✓" : "a gradient for everyone"}
+              your board, forever · {endless.cols}×{endless.rows}
             </Text>
           </Pressable>
-          <Pressable accessibilityRole="button" style={[styles.card, styles.cardHalf]} onPress={() => router.push("/zen")}>
-            <Text style={styles.cardKicker}>zen</Text>
-            <Text style={styles.cardTitleSmall}>free play</Text>
+          <Pressable
+            accessibilityRole="button"
+            style={[styles.card, styles.cardHalf]}
+            onPress={() => router.push("/community")}
+          >
+            <Text style={styles.cardKicker}>community</Text>
+            <Text style={styles.cardTitleSmall}>boards made by players</Text>
           </Pressable>
         </View>
+        <Pressable
+          accessibilityRole="button"
+          style={[styles.card, styles.cardSlim]}
+          onPress={() => router.push({ pathname: "/play", params: { mode: "today" } })}
+        >
+          <Text style={styles.cardKicker}>today</Text>
+          <Text style={styles.cardTitleSmall}>
+            {todayDone ? "solved ✓ — see you tomorrow" : "one gradient, shared by everyone"}
+          </Text>
+        </Pressable>
 
         {/* Secondary */}
         <View style={styles.links}>
@@ -133,6 +172,35 @@ export default function Home() {
         </View>
       </ScrollView>
       </SafeAreaView>
+      <BoardSheet
+        visible={sizing !== null}
+        title="journey board size"
+        byline={`${chapterName(level).toLowerCase()} · level ${level}`}
+        value={sizing ?? { cols: next.cols, rows: next.rows }}
+        onChange={setSizing}
+        preview={sizingPreview}
+        note={{ text: "every journey level will use this size — its colors stay the same", warn: false }}
+        playLabel="use this size"
+        onPlay={() => {
+          if (sizing) updateSettings({ journeySize: { mode: "fixed", cols: sizing.cols, rows: sizing.rows } });
+          setSizing(null);
+        }}
+        onClose={() => setSizing(null)}
+        footer={
+          fixed ? (
+            <Pressable
+              accessibilityRole="button"
+              onPress={() => {
+                updateSettings({ journeySize: { ...journeySize, mode: "grow" } });
+                setSizing(null);
+              }}
+              style={styles.growButton}
+            >
+              <Text style={styles.growText}>let boards grow with the levels instead</Text>
+            </Pressable>
+          ) : undefined
+        }
+      />
     </View>
   );
 }
@@ -210,6 +278,20 @@ const styles = StyleSheet.create({
   cardKicker: { ...typeScale.small, ...trackedUpper, color: palette.accent },
   cardTitle: { ...typeScale.heading, color: palette.text, marginTop: 2 },
   cardMeta: { ...typeScale.small, color: palette.textFaint, marginTop: 2 },
+  cardSlim: { paddingVertical: spacing.lg },
+  sizeChip: {
+    alignSelf: "flex-start",
+    marginTop: 6,
+    paddingHorizontal: spacing.md,
+    minHeight: 30,
+    justifyContent: "center",
+    borderRadius: radius.pill,
+    borderWidth: 1,
+    borderColor: palette.line,
+  },
+  sizeChipText: { ...typeScale.small, ...trackedUpper, color: palette.textDim },
+  growButton: { alignItems: "center", paddingVertical: spacing.md },
+  growText: { ...typeScale.small, ...trackedUpper, color: palette.textDim },
   cardTitleSmall: { ...typeScale.body, color: palette.textDim, marginTop: 2 },
   rowPair: { flexDirection: "row", gap: spacing.md },
   steppers: { flexDirection: "row", gap: spacing.sm },
