@@ -4,7 +4,7 @@
 import { beforeAll, beforeEach, describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { PGlite } from "@electric-sql/pglite";
-import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from "jose";
+import { SignJWT, exportJWK, generateKeyPair } from "jose";
 import { setTestSql, type Sql } from "./_lib/db";
 import { setTestKeys } from "./_lib/auth";
 import * as me from "./me";
@@ -15,6 +15,7 @@ import * as solve from "./board-solve";
 const ISSUER = "https://auth.test";
 let db: PGlite;
 let sign: (sub: string) => Promise<string>;
+let privKey: CryptoKey;
 
 beforeAll(async () => {
   db = new PGlite();
@@ -28,8 +29,9 @@ beforeAll(async () => {
     await db.exec(readFileSync(new URL(`../db/migrations/${f}`, import.meta.url), "utf8"));
   }
   const { publicKey, privateKey } = await generateKeyPair("EdDSA", { crv: "Ed25519" });
+  privKey = privateKey as CryptoKey;
   const jwk = await exportJWK(publicKey);
-  setTestKeys(createLocalJWKSet({ keys: [{ ...jwk, alg: "EdDSA" }] }), ISSUER);
+  setTestKeys([{ ...jwk, alg: "EdDSA" }], ISSUER);
   sign = (sub) =>
     new SignJWT({}).setProtectedHeader({ alg: "EdDSA" }).setSubject(sub).setIssuer(ISSUER)
       .setIssuedAt().setExpirationTime("15m").sign(privateKey);
@@ -60,6 +62,22 @@ describe("auth", () => {
     expect((await me.GET(await req("GET", "/api/me"))).status).toBe(401);
     const forged = new Request("https://gradhuely.com/api/me", { headers: { authorization: "Bearer a.b.c" } });
     expect((await me.GET(forged)).status).toBe(401);
+    // a real token with one byte of the payload changed
+    const good = await sign("u1");
+    const [h, p, s] = good.split(".");
+    const tampered = Buffer.from(Buffer.from(p, "base64url").toString().replace("u1", "u2")).toString("base64url");
+    const bad = new Request("https://gradhuely.com/api/me", { headers: { authorization: `Bearer ${h}.${tampered}.${s}` } });
+    expect((await me.GET(bad)).status).toBe(401);
+    // expired
+    const old = await new SignJWT({}).setProtectedHeader({ alg: "EdDSA" }).setSubject("u1").setIssuer(ISSUER)
+      .setIssuedAt(Math.floor(Date.now() / 1000) - 3600).setExpirationTime(Math.floor(Date.now() / 1000) - 1800).sign(privKey);
+    const expired = new Request("https://gradhuely.com/api/me", { headers: { authorization: `Bearer ${old}` } });
+    expect((await me.GET(expired)).status).toBe(401);
+    // wrong issuer
+    const other = await new SignJWT({}).setProtectedHeader({ alg: "EdDSA" }).setSubject("u1").setIssuer("https://evil.test")
+      .setIssuedAt().setExpirationTime("15m").sign(privKey);
+    const wrongIss = new Request("https://gradhuely.com/api/me", { headers: { authorization: `Bearer ${other}` } });
+    expect((await me.GET(wrongIss)).status).toBe(401);
   });
 });
 

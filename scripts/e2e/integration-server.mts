@@ -9,7 +9,7 @@ import http from "node:http";
 import fs from "node:fs";
 import path from "node:path";
 import { PGlite } from "@electric-sql/pglite";
-import { SignJWT, createLocalJWKSet, exportJWK, generateKeyPair } from "jose";
+import { SignJWT, exportJWK, generateKeyPair } from "jose";
 import { setTestSql, type Sql } from "../../api/_lib/db";
 import { setTestKeys } from "../../api/_lib/auth";
 import * as me from "../../api/me";
@@ -30,7 +30,7 @@ const toSql: Sql = async (strings, ...values) => {
 setTestSql(toSql);
 for (const f of ["001_profiles.sql", "002_community.sql"]) await db.exec(fs.readFileSync(new URL(`../../db/migrations/${f}`, import.meta.url), "utf8"));
 const { publicKey, privateKey } = await generateKeyPair("EdDSA", { crv: "Ed25519" });
-setTestKeys(createLocalJWKSet({ keys: [{ ...(await exportJWK(publicKey)), alg: "EdDSA" }] }), ISSUER);
+setTestKeys([{ ...(await exportJWK(publicKey)), alg: "EdDSA" }] as never, ISSUER);
 
 const sessions = new Map<string, { id: string; email: string }>();
 const routes: Record<string, Record<string, (r: Request) => Promise<Response> | Response>> = {

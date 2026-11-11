@@ -26,7 +26,7 @@ const BLOCKED = [
 ];
 const RESERVED = new Set([
   "admin", "administrator", "gradhuely", "grad-hue-ly", "moderator", "mod", "support", "root",
-  "system", "staff", "official", "anonymous", "null", "undefined", "tapps",
+  "system", "staff", "official", "anonymous", "null", "undefined",
 ]);
 
 const squash = (s: string) =>
