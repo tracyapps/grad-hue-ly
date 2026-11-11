@@ -9,7 +9,9 @@ import {
 } from "@expo-google-fonts/outfit";
 import { GestureHandlerRootView } from "react-native-gesture-handler";
 import { SafeAreaProvider } from "react-native-safe-area-context";
+import { useEffect } from "react";
 import { font, palette } from "@/theme";
+import { startAccountSync } from "@/sync/account";
 
 export default function RootLayout() {
   const [loaded] = useFonts({
@@ -18,6 +20,10 @@ export default function RootLayout() {
     [font.semiBold]: Outfit_600SemiBold,
     [font.bold]: Outfit_700Bold,
   });
+
+  useEffect(() => {
+    startAccountSync();
+  }, []);
 
   if (!loaded) return null;
 

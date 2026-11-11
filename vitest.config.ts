@@ -8,7 +8,7 @@ export default defineConfig({
     },
   },
   test: {
-    include: ["src/engine/**/*.test.ts"],
+    include: ["src/engine/**/*.test.ts", "src/sync/**/*.test.ts"],
     environment: "node",
   },
 });

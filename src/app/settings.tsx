@@ -1,7 +1,8 @@
-import { Platform, Pressable, StyleSheet, Switch, Text, View } from "react-native";
+import { Platform, Pressable, ScrollView, StyleSheet, Switch, Text, View } from "react-native";
 import { router } from "expo-router";
 import { SafeAreaView } from "react-native-safe-area-context";
 import GradientBackdrop from "@/components/GradientBackdrop";
+import AccountPanel from "@/components/AccountPanel";
 import { useProfile } from "@/state/profile";
 import { font, palette, radius, spacing, type as typeScale, trackedUpper } from "@/theme";
 
@@ -48,7 +49,7 @@ export default function Settings() {
         <View style={styles.back} />
       </View>
 
-      <View style={styles.content}>
+      <ScrollView contentContainerStyle={styles.content}>
         <View style={styles.group}>
           <Toggle
             label="sound"
@@ -83,15 +84,7 @@ export default function Settings() {
         </View>
 
         <Text style={styles.sectionLabel}>account</Text>
-        <View style={styles.group}>
-          <View style={styles.toggleRow}>
-            <View style={styles.toggleText}>
-              <Text style={styles.toggleLabel}>sign in</Text>
-              <Text style={styles.toggleHint}>sync progress across your devices</Text>
-            </View>
-            <Text style={styles.soon}>soon</Text>
-          </View>
-        </View>
+        <AccountPanel />
 
         {Platform.OS === "web" && (
           <>
@@ -115,14 +108,14 @@ export default function Settings() {
         )}
 
         <Text style={styles.footer}>grad[hue]ly · v0.1</Text>
-      </View>
+      </ScrollView>
     </SafeAreaView>
     </View>
   );
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: palette.bgMenu },
+  safe: { flex: 1 },
   header: { flexDirection: "row", alignItems: "center", padding: spacing.md },
   back: { width: 44, height: 44, alignItems: "center", justifyContent: "center" },
   backIcon: { color: palette.textDim, fontSize: 26 },

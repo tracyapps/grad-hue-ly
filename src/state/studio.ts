@@ -17,6 +17,7 @@ export interface StudioGradient {
   name: string;
   kind: "image" | "corners";
   createdAt: number;
+  updatedAt?: number;
   /** Row-major hex colors, CANONICAL_COLS × CANONICAL_ROWS. */
   canonical: string[];
   /** For 'corners' sources: TL, TR, BL, BR. */
@@ -25,7 +26,13 @@ export interface StudioGradient {
 
 interface StudioState {
   gradients: StudioGradient[];
+  /** id → when it was deleted (so account sync doesn't resurrect it). */
+  deleted: Record<string, number>;
+  /** Replace the library wholesale (account sync applies a merged copy). */
+  replace: (gradients: StudioGradient[], deleted: Record<string, number>) => void;
   add: (g: Omit<StudioGradient, "id" | "createdAt">) => string;
+  /** Edit a saved gradient in place (name, colors, source). */
+  update: (id: string, patch: Partial<Omit<StudioGradient, "id" | "createdAt">>) => void;
   remove: (id: string) => void;
 }
 
@@ -35,6 +42,8 @@ export const useStudio = create<StudioState>()(
   persist(
     (set, get) => ({
       gradients: [],
+      deleted: {},
+      replace: (gradients, deleted) => set({ gradients, deleted }),
       add: (g) => {
         const id = `g${Date.now().toString(36)}${Math.floor(Math.random() * 1e4).toString(36)}`;
         set({
@@ -45,12 +54,26 @@ export const useStudio = create<StudioState>()(
         });
         return id;
       },
-      remove: (id) => set({ gradients: get().gradients.filter((g) => g.id !== id) }),
+      update: (id, patch) =>
+        set({
+          gradients: get().gradients.map((g) =>
+            g.id === id ? { ...g, ...patch, updatedAt: Date.now() } : g,
+          ),
+        }),
+      remove: (id) =>
+        set({
+          gradients: get().gradients.filter((g) => g.id !== id),
+          deleted: { ...get().deleted, [id]: Date.now() },
+        }),
     }),
     {
       name: "gradhuely-studio",
       storage: createJSONStorage(() => AsyncStorage),
-      version: 1,
+      version: 2,
+      migrate: (persisted) => {
+        const st = persisted as Partial<StudioState>;
+        return { ...st, deleted: st.deleted ?? {} } as StudioState;
+      },
     },
   ),
 );

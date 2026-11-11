@@ -135,6 +135,30 @@ function surpriseCorners(seed: number): string[] {
   return f.corners.map(labToHex);
 }
 
+const HUE_NAMES: Array<[number, string]> = [
+  [20, "rose"], [45, "coral"], [70, "amber"], [100, "gold"], [125, "lime"],
+  [155, "green"], [185, "jade"], [215, "teal"], [245, "azure"], [275, "blue"],
+  [300, "violet"], [325, "plum"], [350, "magenta"], [361, "rose"],
+];
+
+function colorName(hex: string): string {
+  const lab = hexToLab(hex);
+  const c = Math.hypot(lab.a, lab.b);
+  if (c < 0.03) return lab.l > 0.75 ? "pearl" : lab.l < 0.4 ? "ink" : "slate";
+  let h = (Math.atan2(lab.b, lab.a) * 180) / Math.PI;
+  if (h < 0) h += 360;
+  const name = HUE_NAMES.find(([lim]) => h < lim)?.[1] ?? "rose";
+  return lab.l > 0.82 ? `pale ${name}` : lab.l < 0.45 ? `deep ${name}` : name;
+}
+
+/** A name when none is given: "gold to violet", or "gradient 7" for images. */
+function autoName(corners: string[] | null, count: number): string {
+  if (!corners) return `gradient ${count + 1}`;
+  const a = colorName(corners[0]);
+  const b = colorName(corners[3]);
+  return a === b ? `${a} study` : `${a} to ${b}`;
+}
+
 type Readability = { label: string; note: string; ok: boolean };
 
 function readability(labs: Lab[], cols: number, rows: number): Readability {
@@ -199,11 +223,13 @@ function StudioForm({
     <PortalIntoView>
       <style>{ghCss}</style>
       <div className="gh-studio-form">
+        <label className="gh-label" htmlFor="gh-name">name</label>
         <input
+          id="gh-name"
           className="gh-name"
           type="text"
           aria-label="Gradient name"
-          placeholder="name this gradient"
+          placeholder="name this gradient (or we\u2019ll name it for you)"
           value={name}
           onChange={(e) => onName(e.target.value)}
           maxLength={28}
@@ -238,6 +264,7 @@ function StudioForm({
 
 const ghCss = `
 .gh-studio-form { display: flex; flex-direction: column; gap: 12px; margin: 10px 0 14px; }
+.gh-label { font: 500 11px Outfit, sans-serif; letter-spacing: 2.4px; text-transform: uppercase; color: #E08E6D; margin-bottom: -6px; }
 .gh-name {
   background: #1F1B24; color: #ECE7E1; border: 1px solid #FFFFFF14; border-radius: 14px;
   padding: 12px 16px; font-size: 15px; font-family: Outfit, sans-serif; outline: none;
@@ -276,6 +303,10 @@ function StudioWeb() {
   const gradients = useStudio((s) => s.gradients);
   const addGradient = useStudio((s) => s.add);
   const removeGradient = useStudio((s) => s.remove);
+  const updateGradient = useStudio((s) => s.update);
+  const [editingId, setEditingId] = useState<string | null>(null);
+  const [libraryView, setLibraryView] = useState<"grid" | "list">("grid");
+  const editing = gradients.find((g) => g.id === editingId) ?? null;
 
   const [mode, setMode] = useState<"corners" | "image">("corners");
   const [name, setName] = useState("");
@@ -335,14 +366,47 @@ function StudioWeb() {
     ),
   );
 
+  const finalName = () => name.trim() || autoName(mode === "corners" ? corners : null, gradients.length);
+
   const save = () => {
     const id = addGradient({
-      name: name.trim() || "untitled",
+      name: finalName(),
       kind: mode,
       canonical,
       corners: mode === "corners" ? [corners[0], corners[1], corners[2], corners[3]] : undefined,
     });
+    setEditingId(null);
     setJustSaved(id);
+  };
+
+  const saveChanges = () => {
+    if (!editing) return;
+    updateGradient(editing.id, {
+      name: finalName(),
+      kind: mode,
+      canonical,
+      corners: mode === "corners" ? [corners[0], corners[1], corners[2], corners[3]] : undefined,
+    });
+    setJustSaved(editing.id);
+    setEditingId(null);
+  };
+
+  /** Load a library gradient into the editor. */
+  const edit = (g: StudioGradient) => {
+    setEditingId(g.id);
+    setJustSaved(null);
+    setName(g.name);
+    setMode(g.kind);
+    if (g.kind === "corners" && g.corners) setCorners([...g.corners]);
+    else setImageCanonical(g.canonical);
+    if (Platform.OS === "web" && typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  };
+
+  const cancelEdit = () => {
+    setEditingId(null);
+    setName("");
   };
 
   const play = (g: StudioGradient, cols: number, rows: number) => {
@@ -385,6 +449,17 @@ function StudioWeb() {
           </View>
 
           {/* DOM form: name + color pickers / file input */}
+          {editing && (
+            <View style={styles.editBanner} accessibilityLiveRegion="polite">
+              <Text style={styles.editBannerText}>
+                editing <Text style={styles.editBannerName}>{editing.name}</Text>
+              </Text>
+              <Pressable accessibilityRole="button" onPress={cancelEdit} hitSlop={8}>
+                <Text style={styles.ghostButtonText}>cancel</Text>
+              </Pressable>
+            </View>
+          )}
+
           <StudioForm
             mode={mode}
             name={name}
@@ -470,51 +545,115 @@ function StudioWeb() {
             <Text style={styles.readNote}>{read.note}</Text>
           </View>
 
-          <Pressable accessibilityRole="button" style={styles.saveButton} onPress={save}>
-            <Text style={styles.saveButtonText}>save to library</Text>
-          </Pressable>
+          {editing ? (
+            <View style={styles.saveRow}>
+              <Pressable accessibilityRole="button" style={[styles.saveButton, styles.saveFlex]} onPress={saveChanges}>
+                <Text style={styles.saveButtonText}>save changes</Text>
+              </Pressable>
+              <Pressable accessibilityRole="button" style={[styles.ghostButton, styles.saveFlex]} onPress={save}>
+                <Text style={styles.ghostButtonText}>save as new</Text>
+              </Pressable>
+              <Pressable accessibilityRole="button" style={styles.ghostButton} onPress={cancelEdit}>
+                <Text style={styles.ghostButtonText}>cancel</Text>
+              </Pressable>
+            </View>
+          ) : (
+            <Pressable accessibilityRole="button" style={styles.saveButton} onPress={save}>
+              <Text style={styles.saveButtonText}>save to library</Text>
+            </Pressable>
+          )}
           {justSaved && (
-            <Text style={styles.savedNote}>saved — find it in the library below</Text>
+            <Text style={styles.savedNote} accessibilityLiveRegion="polite">
+              saved — find it in the library below
+            </Text>
           )}
 
           {/* Library */}
-          <Text style={styles.sectionLabel}>library</Text>
+          <View style={styles.libraryHeader}>
+            <Text style={styles.sectionLabel}>library</Text>
+            <View style={styles.viewToggle} accessibilityRole="radiogroup">
+              {(["grid", "list"] as const).map((v) => (
+                <Pressable
+                  key={v}
+                  accessibilityRole="radio"
+                  accessibilityState={{ checked: libraryView === v }}
+                  onPress={() => setLibraryView(v)}
+                  style={[styles.viewChip, libraryView === v && styles.viewChipActive]}
+                >
+                  <Text style={[styles.viewChipText, libraryView === v && styles.viewChipTextActive]}>{v}</Text>
+                </Pressable>
+              ))}
+            </View>
+          </View>
           {gradients.length === 0 && (
             <Text style={styles.empty}>nothing crafted yet</Text>
           )}
-          {gradients.map((g) => (
-            <View key={g.id} style={styles.libraryRow}>
-              <MiniBoard
-                colors={quantizeField(gradientField(g, 6, 8), 6, 8)}
-                cols={6}
-                rows={8}
-                height={52}
-                radius={radius.sm}
-              />
-              <View style={styles.libraryInfo}>
-                <Text style={styles.libraryName}>{g.name}</Text>
-                <Text style={styles.libraryMeta}>
-                  {g.kind === "image" ? "image" : "corners"} · plays at any size
-                </Text>
-              </View>
-              <Pressable accessibilityRole="button"
-                style={styles.playChip}
-                onPress={() => play(g, grid.cols, grid.rows)}
-                accessibilityLabel={`Play ${g.name}`}
-              >
-                <Text style={styles.playChipText}>
-                  play {grid.label}
-                </Text>
-              </Pressable>
-              <Pressable accessibilityRole="button"
-                hitSlop={8}
-                onPress={() => removeGradient(g.id)}
-                accessibilityLabel={`Delete ${g.name}`}
-              >
-                <Text style={styles.delete}>×</Text>
-              </Pressable>
+          {libraryView === "grid" ? (
+            <View style={styles.libraryGrid}>
+              {gradients.map((g) => (
+                <View key={g.id} style={[styles.gridCard, g.id === editingId && styles.gridCardEditing]}>
+                  <Pressable
+                    accessibilityRole="button"
+                    accessibilityLabel={`Play ${g.name} at ${grid.label}`}
+                    onPress={() => play(g, grid.cols, grid.rows)}
+                    style={styles.gridArt}
+                  >
+                    <MiniBoard
+                      colors={quantizeField(gradientField(g, grid.cols, grid.rows), grid.cols, grid.rows)}
+                      cols={grid.cols}
+                      rows={grid.rows}
+                      height={150}
+                      radius={radius.sm}
+                    />
+                  </Pressable>
+                  <Text style={styles.gridName} numberOfLines={1}>{g.name}</Text>
+                  <View style={styles.gridActions}>
+                    <Pressable accessibilityRole="button" accessibilityLabel={`Edit ${g.name}`} hitSlop={6} onPress={() => edit(g)}>
+                      <Text style={styles.gridAction}>edit</Text>
+                    </Pressable>
+                    <Pressable accessibilityRole="button" accessibilityLabel={`Play ${g.name} at ${grid.label}`} hitSlop={6} onPress={() => play(g, grid.cols, grid.rows)}>
+                      <Text style={styles.gridAction}>play</Text>
+                    </Pressable>
+                    <Pressable accessibilityRole="button" accessibilityLabel={`Delete ${g.name}`} hitSlop={6} onPress={() => removeGradient(g.id)}>
+                      <Text style={styles.gridActionDim}>delete</Text>
+                    </Pressable>
+                  </View>
+                </View>
+              ))}
             </View>
-          ))}
+          ) : (
+            gradients.map((g) => (
+              <View key={g.id} style={[styles.libraryRow, g.id === editingId && styles.gridCardEditing]}>
+                <MiniBoard
+                  colors={quantizeField(gradientField(g, 6, 8), 6, 8)}
+                  cols={6}
+                  rows={8}
+                  height={52}
+                  radius={radius.sm}
+                />
+                <View style={styles.libraryInfo}>
+                  <Text style={styles.libraryName}>{g.name}</Text>
+                  <Text style={styles.libraryMeta}>
+                    {g.kind === "image" ? "image" : "corners"} · plays at any size
+                  </Text>
+                </View>
+                <Pressable accessibilityRole="button" style={styles.playChip} onPress={() => edit(g)} accessibilityLabel={`Edit ${g.name}`}>
+                  <Text style={styles.playChipText}>edit</Text>
+                </Pressable>
+                <Pressable accessibilityRole="button" style={styles.playChip} onPress={() => play(g, grid.cols, grid.rows)} accessibilityLabel={`Play ${g.name}`}>
+                  <Text style={styles.playChipText}>play {grid.label}</Text>
+                </Pressable>
+                <Pressable accessibilityRole="button" hitSlop={8} onPress={() => removeGradient(g.id)} accessibilityLabel={`Delete ${g.name}`}>
+                  <Text style={styles.delete}>×</Text>
+                </Pressable>
+              </View>
+            ))
+          )}
+          {gradients.length > 0 && (
+            <Text style={styles.libraryHint}>
+              thumbnails show the {grid.label} board — change the size under "as tiles" to compare at any difficulty
+            </Text>
+          )}
         </ScrollView>
       </SafeAreaView>
     </View>
@@ -558,6 +697,57 @@ const styles = StyleSheet.create({
     paddingVertical: spacing.sm,
   },
   surpriseText: { ...typeScale.small, ...trackedUpper, color: palette.textDim },
+  saveRow: { flexDirection: "row", gap: spacing.sm, alignItems: "stretch", flexWrap: "wrap" },
+  saveFlex: { flexGrow: 1 },
+  ghostButton: {
+    borderWidth: 1,
+    borderColor: palette.line,
+    borderRadius: radius.pill,
+    paddingVertical: 14,
+    paddingHorizontal: spacing.lg,
+    alignItems: "center",
+    justifyContent: "center",
+    marginTop: spacing.sm,
+  },
+  ghostButtonText: { ...typeScale.small, ...trackedUpper, color: palette.textDim },
+  editBanner: {
+    flexDirection: "row",
+    alignItems: "center",
+    justifyContent: "space-between",
+    backgroundColor: palette.accentSoft,
+    borderWidth: 1,
+    borderColor: palette.accent,
+    borderRadius: radius.md,
+    paddingHorizontal: spacing.lg,
+    paddingVertical: spacing.md,
+  },
+  editBannerText: { ...typeScale.small, ...trackedUpper, color: palette.text },
+  editBannerName: { color: palette.accent },
+  libraryHeader: { flexDirection: "row", alignItems: "flex-end", justifyContent: "space-between" },
+  viewToggle: { flexDirection: "row", gap: 4, backgroundColor: palette.surface, borderRadius: radius.pill, padding: 3 },
+  viewChip: { paddingHorizontal: spacing.md, paddingVertical: 5, borderRadius: radius.pill },
+  viewChipActive: { backgroundColor: palette.surfaceRaised },
+  viewChipText: { ...typeScale.small, ...trackedUpper, color: palette.textFaint },
+  viewChipTextActive: { color: palette.text },
+  libraryGrid: { flexDirection: "row", flexWrap: "wrap", gap: spacing.md },
+  gridCard: {
+    width: 168,
+    flexGrow: 1,
+    maxWidth: 220,
+    backgroundColor: palette.surface,
+    borderRadius: radius.md,
+    padding: spacing.md,
+    gap: spacing.sm,
+    borderWidth: 1,
+    borderColor: "transparent",
+  },
+  gridCardEditing: { borderColor: palette.accent },
+  gridArt: { alignItems: "center", justifyContent: "center", height: 150 },
+  gridName: { ...typeScale.body, color: palette.text },
+  gridActions: { flexDirection: "row", gap: spacing.md },
+  gridAction: { ...typeScale.small, ...trackedUpper, color: palette.textDim },
+  gridActionDim: { ...typeScale.small, ...trackedUpper, color: palette.textFaint },
+  libraryHint: { ...typeScale.small, color: palette.textFaint, textAlign: "center" },
   readRow: {
     flexDirection: "row",
     alignItems: "center",

@@ -86,7 +86,7 @@ export default function Zen() {
 }
 
 const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: palette.bgMenu },
+  safe: { flex: 1 },
   back: { position: "absolute", top: spacing.sm, left: spacing.sm, zIndex: 1, padding: spacing.sm },
   backIcon: { color: palette.textDim, fontSize: 26 },
   content: {

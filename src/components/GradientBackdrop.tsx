@@ -1,11 +1,16 @@
 /**
- * The living menu backdrop: oversized soft color blobs drifting very slowly
- * on the dark base — an aurora made of the game's own gradients. Honors
- * reduce-motion by rendering a static, equally lovely composition.
+ * The living menu backdrop.
+ *
+ * Web: an interactive gradient terrain (see backdrop/terrain.ts) colored by
+ * a real board — on the home screen, the very level you're about to play.
+ * Native: oversized soft color blobs drifting slowly (a Skia port of the
+ * terrain is the natural next step there). Both honor reduce-motion.
  */
 
-import { useEffect } from "react";
-import { StyleSheet, useWindowDimensions } from "react-native";
+import { useCallback, useEffect, useRef, useState } from "react";
+import { Platform, StyleSheet, useWindowDimensions, View } from "react-native";
+import { useFocusEffect } from "expo-router";
+import { Terrain, type PaletteGrid } from "./backdrop/terrain";
 import Animated, {
   cancelAnimation,
   useAnimatedStyle,
@@ -103,9 +108,20 @@ function DriftBlob({ blob, reduceMotion }: { blob: Blob; reduceMotion: boolean }
   );
 }
 
-export default function GradientBackdrop({ reduceMotion }: { reduceMotion?: boolean }) {
+interface BackdropProps {
+  reduceMotion?: boolean;
+  /** A board to color the terrain with (web). */
+  palette?: PaletteGrid;
+  /** "hero" = the full show; "ambient" = quieter (default). */
+  variant?: "hero" | "ambient";
+}
+
+export default function GradientBackdrop({ reduceMotion, palette, variant = "ambient" }: BackdropProps) {
   const settingReduceMotion = useProfile((s) => s.settings.reduceMotion);
   const calm = reduceMotion ?? settingReduceMotion;
+  if (Platform.OS === "web") {
+    return <TerrainBackdrop calm={calm} palette={palette} variant={variant} />;
+  }
   return (
     <Animated.View style={styles.fill} pointerEvents="none">
       {BLOBS.map((b, i) => (
@@ -114,6 +130,102 @@ export default function GradientBackdrop({ reduceMotion }: { reduceMotion?: bool
     </Animated.View>
   );
 }
+
+function prefersReducedMotion(): boolean {
+  try {
+    return window.matchMedia("(prefers-reduced-motion: reduce)").matches;
+  } catch {
+    return false;
+  }
+}
+
+function TerrainBackdrop({
+  calm,
+  palette,
+  variant,
+}: {
+  calm: boolean;
+  palette?: PaletteGrid;
+  variant: "hero" | "ambient";
+}) {
+  // Web-only: the RN View's ref is the underlying DOM node.
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  const hostRef = useRef<any>(null);
+  const canvasRef = useRef<HTMLCanvasElement | null>(null);
+  const terrainRef = useRef<Terrain | null>(null);
+  const [focused, setFocused] = useState(true);
+  const still = calm || prefersReducedMotion();
+
+  useFocusEffect(
+    useCallback(() => {
+      setFocused(true);
+      return () => setFocused(false);
+    }, []),
+  );
+
+  // Create once; size to the host.
+  useEffect(() => {
+    const host = hostRef.current as HTMLElement | null;
+    const canvas = canvasRef.current;
+    if (!host || !canvas) return;
+    let terrain: Terrain;
+    try {
+      terrain = new Terrain(canvas, { variant, background: palette_bg }, palette);
+    } catch {
+      return; // no canvas: the solid background is a fine fallback
+    }
+    terrainRef.current = terrain;
+    const fit = () => {
+      const r = host.getBoundingClientRect();
+      terrain.resize(r.width, r.height);
+    };
+    fit();
+    const ro = new ResizeObserver(fit);
+    ro.observe(host);
+    const local = (e: PointerEvent) => {
+      const r = host.getBoundingClientRect();
+      return [e.clientX - r.left, e.clientY - r.top] as const;
+    };
+    const onMove = (e: PointerEvent) => terrain.pointer(...local(e));
+    const onDown = (e: PointerEvent) => terrain.ripple(...local(e));
+    window.addEventListener("pointermove", onMove, { passive: true });
+    window.addEventListener("pointerdown", onDown, { passive: true });
+    return () => {
+      ro.disconnect();
+      window.removeEventListener("pointermove", onMove);
+      window.removeEventListener("pointerdown", onDown);
+      terrain.pause();
+      terrainRef.current = null;
+    };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [variant]);
+
+  useEffect(() => {
+    if (palette) terrainRef.current?.setPalette(palette);
+  }, [palette]);
+
+  // Run only while this screen is focused and the tab is visible.
+  useEffect(() => {
+    const terrain = terrainRef.current;
+    if (!terrain) return;
+    const sync = () => {
+      if (still) terrain.still();
+      else if (focused && document.visibilityState === "visible") terrain.play();
+      else terrain.pause();
+    };
+    sync();
+    document.addEventListener("visibilitychange", sync);
+    return () => document.removeEventListener("visibilitychange", sync);
+  }, [focused, still]);
+
+  return (
+    <View ref={hostRef} style={styles.fill} pointerEvents="none" aria-hidden>
+      <canvas ref={canvasRef} style={{ width: "100%", height: "100%", display: "block" }} />
+    </View>
+  );
+}
+
+const palette_bg = palette.bgMenu;
 
 const styles = StyleSheet.create({
   fill: {
