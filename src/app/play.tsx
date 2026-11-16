@@ -118,6 +118,7 @@ export default function PlayRoute() {
       <PlayScreen
         puzzle={generateToday(dateISO, worldSeed)}
         kind="today"
+        dateISO={dateISO}
         title="TODAY"
         subtitle="a gradient for everyone"
         next={{ label: "keep playing", onPress: () => goEndless(settings.endless) }}
@@ -147,7 +148,7 @@ export default function PlayRoute() {
       const nonce = num(p.v, 0);
       return (
         <PlayScreen
-          key={`zen-${nonce}`}
+          key={`zen-${nonce}-${zSize}-${zSub}`}
           puzzle={generateZen(nonce, { size: zSize, subtlety: zSub }, worldSeed)}
           kind="zen"
           size={zSize}

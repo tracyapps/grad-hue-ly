@@ -47,6 +47,7 @@ interface PlayScreenProps {
   puzzle: Puzzle;
   kind: PlayKind;
   level?: number;
+  dateISO?: string;
   size?: ZenSize;
   subtlety?: ZenSubtlety;
   studioId?: string;
@@ -67,10 +68,17 @@ interface PlayScreenProps {
   onExit: () => void;
 }
 
+interface Round {
+  phase: BoardPhase;
+  board: { puzzle: Puzzle; cornerAssist: boolean; dateISO?: string } | null;
+  placement: number[] | null;
+}
+
 export default function PlayScreen({
-  puzzle,
+  puzzle: previewPuzzle,
   kind,
   level,
+  dateISO: previewDate,
   size,
   subtlety,
   studioId,
@@ -92,56 +100,54 @@ export default function PlayScreen({
     [sizing, resize],
   );
   const reduceMotion = useProfile((s) => s.settings.reduceMotion);
-  const cornerAssist = useProfile((s) => s.settings.cornerAssist);
+  const previewCornerAssist = useProfile((s) => s.settings.cornerAssist);
   const showMoves = useProfile((s) => s.settings.showMoves);
   const recordSolve = useProfile((s) => s.recordSolve);
 
+  const [round, setRound] = useState<Round>({ phase: "revealing", board: null, placement: null });
+  // Profile sync can regenerate the route's puzzle. Keep the board the
+  // player started with until they navigate to a different one.
+  const { puzzle, cornerAssist, dateISO } =
+    round.board ?? { puzzle: previewPuzzle, cornerAssist: previewCornerAssist, dateISO: previewDate };
+  const { phase } = round;
+  const solvedPlacement = useMemo(() => puzzle.placement.map((_, i) => i), [puzzle.placement]);
+  const placement = round.placement ?? solvedPlacement;
   const locked = useMemo(
     () => (cornerAssist ? cornerCells(puzzle.cols, puzzle.rows) : []),
     [cornerAssist, puzzle.cols, puzzle.rows],
   );
 
-  const [phase, setPhase] = useState<BoardPhase>("revealing");
-  const [placement, setPlacement] = useState<number[]>(() =>
-    puzzle.placement.map((_, i) => i),
-  );
   const [moves, setMoves] = useState(0);
   const [celebrateOrigin, setCelebrateOrigin] = useState<number | null>(null);
   const [sheetVisible, setSheetVisible] = useState(false);
   const [hintVisible, setHintVisible] = useState(true);
   const recorded = useRef(false);
-  const revealTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
-
-  const shuffledStart = useMemo(
-    () =>
-      cornerAssist
-        ? applyCornerLocks(puzzle.placement, puzzle.cols, puzzle.rows)
-        : puzzle.placement,
-    [puzzle.placement, puzzle.cols, puzzle.rows, cornerAssist],
-  );
 
   const startShuffle = useCallback(() => {
-    if (revealTimer.current) {
-      clearTimeout(revealTimer.current);
-      revealTimer.current = null;
-    }
-    setPhase((p) => (p === "revealing" ? "playing" : p));
-    setPlacement(shuffledStart);
-  }, [shuffledStart]);
+    setRound((current) => {
+      if (current.phase !== "revealing") return current;
+      return {
+        phase: "playing",
+        board: { puzzle, cornerAssist, dateISO },
+        placement: cornerAssist
+          ? applyCornerLocks(puzzle.placement, puzzle.cols, puzzle.rows)
+          : puzzle.placement,
+      };
+    });
+  }, [puzzle, cornerAssist, dateISO]);
 
   useEffect(() => {
-    revealTimer.current = setTimeout(startShuffle, puzzle.params.revealMs);
-    return () => {
-      if (revealTimer.current) clearTimeout(revealTimer.current);
-    };
-  }, [startShuffle, puzzle.params.revealMs]);
+    if (phase !== "revealing") return;
+    const timer = setTimeout(startShuffle, puzzle.params.revealMs);
+    return () => clearTimeout(timer);
+  }, [phase, startShuffle, puzzle.params.revealMs]);
 
   const labs = useMemo(() => puzzle.colors.map(hexToLab), [puzzle.colors]);
 
   const handleSolved = useCallback(
     (originCell: number, moveCount: number) => {
       setCelebrateOrigin(originCell);
-      setPhase("solved");
+      setRound((current) => ({ ...current, phase: "solved", placement: null }));
       hapticSolve();
       playSound("solve");
       if (!recorded.current) {
@@ -149,6 +155,7 @@ export default function PlayScreen({
         recordSolve({
           kind,
           level,
+          dateISO,
           size,
           subtlety,
           studioId,
@@ -163,22 +170,22 @@ export default function PlayScreen({
       // Let the seams close and the finished gradient breathe before the sheet.
       setTimeout(() => setSheetVisible(true), reduceMotion ? 700 : 2100);
     },
-    [kind, level, size, subtlety, studioId, grid, zenNonce, boardId, boardName, onSolved, recordSolve, reduceMotion],
+    [kind, level, dateISO, size, subtlety, studioId, grid, zenNonce, boardId, boardName, onSolved, recordSolve, reduceMotion],
   );
 
   const onSwap = useCallback(
     (from: number, to: number) => {
       if (phase !== "playing") return;
       const next = applySwap(placement, from, to);
-      setPlacement(next);
       setMoves((m) => m + 1);
       setHintVisible(false);
       hapticDrop();
       playSound("drop");
       if (isSolvedBy(next, labs)) {
         // Look-alike tiles count; settle them home so the finished board is exact.
-        setPlacement(next.map((_, i) => i));
         handleSolved(to, moves + 1);
+      } else {
+        setRound((current) => ({ ...current, placement: next }));
       }
     },
     [phase, placement, moves, handleSolved, labs],
@@ -189,13 +196,13 @@ export default function PlayScreen({
     if (phase !== "playing") return;
     const next = applyCornerLocks(placement, puzzle.cols, puzzle.rows);
     if (next.every((t, i) => t === placement[i])) return;
-    setPlacement(next);
     setHintVisible(false);
     hapticDrop();
     playSound("drop");
     if (isSolvedBy(next, labs)) {
-      setPlacement(next.map((_, i) => i));
       handleSolved(cornerCells(puzzle.cols, puzzle.rows)[0], moves);
+    } else {
+      setRound((current) => ({ ...current, placement: next }));
     }
   }, [phase, placement, puzzle.cols, puzzle.rows, handleSolved, moves, labs]);
 
@@ -204,10 +211,9 @@ export default function PlayScreen({
     setSheetVisible(false);
     setCelebrateOrigin(null);
     setMoves(0);
-    setPlacement(puzzle.placement.map((_, i) => i));
-    setPhase("revealing");
-    revealTimer.current = setTimeout(startShuffle, puzzle.params.revealMs);
-  }, [puzzle, startShuffle]);
+    setHintVisible(true);
+    setRound((current) => ({ ...current, phase: "revealing", placement: null }));
+  }, []);
 
   return (
     <SafeAreaView style={styles.safe}>

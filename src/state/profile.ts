@@ -151,9 +151,9 @@ export const useProfile = create<ProfileState>()(
       settings: DEFAULT_SETTINGS,
       onboarded: false,
 
-      recordSolve: ({ kind, level, size, subtlety, studioId, grid, zenNonce, boardId, boardName, moves }) => {
+      recordSolve: ({ kind, level, dateISO: playedDate, size, subtlety, studioId, grid, zenNonce, boardId, boardName, moves }) => {
         const state = get();
-        const dateISO = kind === "today" ? todayISO() : undefined;
+        const dateISO = kind === "today" ? playedDate ?? todayISO() : undefined;
         const key =
           kind === "level"
             ? `level:${level}${grid ? `:${grid}` : ""}`
